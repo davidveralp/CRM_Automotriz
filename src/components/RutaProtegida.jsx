@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 // Guarda de acceso: exige sesión, cuenta activa con rol asignado y,
 // opcionalmente, que el rol esté en `rolesPermitidos`.
 function RutaProtegida({ children, rolesPermitidos }) {
-  const { sesion, usuario, cargando } = useAuth()
+  const { sesion, usuario, cargando, error } = useAuth()
 
   if (cargando) {
     return <div className="p-6 text-slate-500">Cargando…</div>
@@ -12,6 +12,14 @@ function RutaProtegida({ children, rolesPermitidos }) {
 
   if (!sesion) {
     return <Navigate to="/login" replace />
+  }
+
+  if (error && !usuario) {
+    return (
+      <div className="p-6 text-red-600">
+        No se pudo cargar tu perfil: {error}. Revisa la conexión y recarga la página.
+      </div>
+    )
   }
 
   if (!usuario || !usuario.activo || !usuario.rol) {

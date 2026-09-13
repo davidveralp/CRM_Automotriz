@@ -24,32 +24,37 @@ function Clientes() {
     setBuscando(true)
     setError(null)
 
-    const termino = busqueda.trim()
-    let consulta = supabase
-      .from('clientes')
-      .select(CAMPOS_LISTA)
-      .is('eliminado_en', null)
-      .order('creado_en', { ascending: false })
-      .limit(50)
+    try {
+      const termino = busqueda.trim()
+      let consulta = supabase
+        .from('clientes')
+        .select(CAMPOS_LISTA)
+        .is('eliminado_en', null)
+        .order('creado_en', { ascending: false })
+        .limit(50)
 
-    if (termino) {
-      const soloDigitos = termino.replace(/\D/g, '')
-      const condiciones = [`nombre.ilike.%${termino}%`, `apellido.ilike.%${termino}%`, `razon_social.ilike.%${termino}%`]
-      if (soloDigitos) {
-        condiciones.push(`rut_norm.ilike.%${soloDigitos}%`)
-        condiciones.push(`telefono_norm.ilike.%${soloDigitos}%`)
+      if (termino) {
+        const soloDigitos = termino.replace(/\D/g, '')
+        const condiciones = [`nombre.ilike.%${termino}%`, `apellido.ilike.%${termino}%`, `razon_social.ilike.%${termino}%`]
+        if (soloDigitos) {
+          condiciones.push(`rut_norm.ilike.%${soloDigitos}%`)
+          condiciones.push(`telefono_norm.ilike.%${soloDigitos}%`)
+        }
+        consulta = consulta.or(condiciones.join(','))
       }
-      consulta = consulta.or(condiciones.join(','))
-    }
 
-    const { data, error: errorConsulta } = await consulta
+      const { data, error: errorConsulta } = await consulta
 
-    if (errorConsulta) {
-      setError(errorConsulta.message)
-    } else {
-      setClientes(data)
+      if (errorConsulta) {
+        setError(errorConsulta.message)
+      } else {
+        setClientes(data)
+      }
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setBuscando(false)
     }
-    setBuscando(false)
   }
 
   return (
@@ -151,16 +156,21 @@ function FormularioNuevoCliente({ empresaId, onCancelar, onCreado }) {
     if (!rut && !telefono && !nombreParaComparar) return
 
     setRevisandoDuplicados(true)
-    const { data, error: errorRpc } = await supabase.rpc('clientes_buscar_posibles_duplicados', {
-      p_rut: rut || null,
-      p_telefono: telefono || null,
-      p_nombre: nombreParaComparar || null,
-    })
-    setRevisandoDuplicados(false)
-
-    if (!errorRpc) {
-      setDuplicados(data || [])
-      setConfirmadoPeseADuplicados(false)
+    try {
+      const { data, error: errorRpc } = await supabase.rpc('clientes_buscar_posibles_duplicados', {
+        p_rut: rut || null,
+        p_telefono: telefono || null,
+        p_nombre: nombreParaComparar || null,
+      })
+      if (!errorRpc) {
+        setDuplicados(data || [])
+        setConfirmadoPeseADuplicados(false)
+      }
+    } catch {
+      // Revisión de duplicados es una ayuda, no un paso obligatorio: si falla
+      // la conexión, se deja pasar en silencio.
+    } finally {
+      setRevisandoDuplicados(false)
     }
   }
 
@@ -174,28 +184,33 @@ function FormularioNuevoCliente({ empresaId, onCancelar, onCreado }) {
     setGuardando(true)
     setError(null)
 
-    const { data, error: errorInsercion } = await supabase
-      .from('clientes')
-      .insert({
-        empresa_id: empresaId,
-        tipo,
-        nombre: tipo === 'empresa' ? razonSocial : nombre,
-        apellido: tipo === 'persona' ? apellido || null : null,
-        razon_social: tipo === 'empresa' ? razonSocial : null,
-        rut: rut || null,
-        telefono: telefono || null,
-        email: email || null,
-      })
-      .select()
-      .single()
+    try {
+      const { data, error: errorInsercion } = await supabase
+        .from('clientes')
+        .insert({
+          empresa_id: empresaId,
+          tipo,
+          nombre: tipo === 'empresa' ? razonSocial : nombre,
+          apellido: tipo === 'persona' ? apellido || null : null,
+          razon_social: tipo === 'empresa' ? razonSocial : null,
+          rut: rut || null,
+          telefono: telefono || null,
+          email: email || null,
+        })
+        .select()
+        .single()
 
-    if (errorInsercion) {
-      setError(errorInsercion.message)
+      if (errorInsercion) {
+        setError(errorInsercion.message)
+        return
+      }
+
+      onCreado(data)
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
       setGuardando(false)
-      return
     }
-
-    onCreado(data)
   }
 
   return (

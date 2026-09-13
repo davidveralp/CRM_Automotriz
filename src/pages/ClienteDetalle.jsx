@@ -19,27 +19,36 @@ function ClienteDetalle() {
   const [mostrarFormularioVehiculo, setMostrarFormularioVehiculo] = useState(false)
 
   async function cargarCliente() {
-    const { data, error: errorConsulta } = await supabase
-      .from('clientes')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
+    try {
+      const { data, error: errorConsulta } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
 
-    if (errorConsulta) {
-      setError(errorConsulta.message)
-    } else {
-      setCliente(data)
+      if (errorConsulta) {
+        setError(errorConsulta.message)
+      } else {
+        setCliente(data)
+      }
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
     }
   }
 
   async function cargarVehiculos() {
-    const { data, error: errorConsulta } = await supabase
-      .from('clientes_vehiculos')
-      .select('es_propietario, es_conductor, vehiculos(id, patente, marca, modelo, anio, kilometraje)')
-      .eq('cliente_id', id)
+    try {
+      const { data, error: errorConsulta } = await supabase
+        .from('clientes_vehiculos')
+        .select('es_propietario, es_conductor, vehiculos(id, patente, marca, modelo, anio, kilometraje)')
+        .eq('cliente_id', id)
 
-    if (!errorConsulta) {
-      setVehiculos(data || [])
+      if (!errorConsulta) {
+        setVehiculos(data || [])
+      }
+    } catch {
+      // La lista de vehículos es secundaria en esta pantalla; si falla la
+      // conexión, cargarCliente() ya deja el error visible.
     }
   }
 
@@ -54,24 +63,29 @@ function ClienteDetalle() {
     setGuardando(true)
     setError(null)
 
-    const { error: errorActualizar } = await supabase
-      .from('clientes')
-      .update({
-        nombre: cliente.nombre,
-        apellido: cliente.apellido,
-        razon_social: cliente.razon_social,
-        rut: cliente.rut,
-        telefono: cliente.telefono,
-        email: cliente.email,
-        direccion: cliente.direccion,
-        notas: cliente.notas,
-      })
-      .eq('id', id)
+    try {
+      const { error: errorActualizar } = await supabase
+        .from('clientes')
+        .update({
+          nombre: cliente.nombre,
+          apellido: cliente.apellido,
+          razon_social: cliente.razon_social,
+          rut: cliente.rut,
+          telefono: cliente.telefono,
+          email: cliente.email,
+          direccion: cliente.direccion,
+          notas: cliente.notas,
+        })
+        .eq('id', id)
 
-    if (errorActualizar) {
-      setError(errorActualizar.message)
+      if (errorActualizar) {
+        setError(errorActualizar.message)
+      }
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setGuardando(false)
     }
-    setGuardando(false)
   }
 
   function actualizarCampo(campo, valor) {
@@ -255,16 +269,21 @@ function FormularioNuevoVehiculo({ clienteId, empresaId, onCancelar, onVinculado
     setGuardando(true)
     setError(null)
 
-    const { error: errorVinculo } = await supabase
-      .from('clientes_vehiculos')
-      .insert({ cliente_id: clienteId, vehiculo_id: vehiculoId, es_propietario: true })
+    try {
+      const { error: errorVinculo } = await supabase
+        .from('clientes_vehiculos')
+        .insert({ cliente_id: clienteId, vehiculo_id: vehiculoId, es_propietario: true })
 
-    setGuardando(false)
-    if (errorVinculo) {
-      setError(errorVinculo.message)
-      return
+      if (errorVinculo) {
+        setError(errorVinculo.message)
+        return
+      }
+      onVinculado()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setGuardando(false)
     }
-    onVinculado()
   }
 
   async function manejarEnvio(evento) {
@@ -273,49 +292,53 @@ function FormularioNuevoVehiculo({ clienteId, empresaId, onCancelar, onVinculado
     setError(null)
     setVehiculoExistente(null)
 
-    const { data: nuevoVehiculo, error: errorInsercion } = await supabase
-      .from('vehiculos')
-      .insert({
-        empresa_id: empresaId,
-        patente,
-        marca,
-        modelo,
-        anio: anio ? Number(anio) : null,
-        kilometraje: kilometraje ? Number(kilometraje) : null,
-      })
-      .select()
-      .single()
+    try {
+      const { data: nuevoVehiculo, error: errorInsercion } = await supabase
+        .from('vehiculos')
+        .insert({
+          empresa_id: empresaId,
+          patente,
+          marca,
+          modelo,
+          anio: anio ? Number(anio) : null,
+          kilometraje: kilometraje ? Number(kilometraje) : null,
+        })
+        .select()
+        .single()
 
-    if (errorInsercion) {
-      // 23505 = violación de índice único (patente ya existe en esta empresa).
-      if (errorInsercion.code === '23505') {
-        const patenteNorm = normalizarPatenteLocal(patente)
-        const { data: existente } = await supabase
-          .from('vehiculos')
-          .select('id, patente, marca, modelo')
-          .eq('empresa_id', empresaId)
-          .eq('patente_norm', patenteNorm)
-          .maybeSingle()
+      if (errorInsercion) {
+        // 23505 = violación de índice único (patente ya existe en esta empresa).
+        if (errorInsercion.code === '23505') {
+          const patenteNorm = normalizarPatenteLocal(patente)
+          const { data: existente } = await supabase
+            .from('vehiculos')
+            .select('id, patente, marca, modelo')
+            .eq('empresa_id', empresaId)
+            .eq('patente_norm', patenteNorm)
+            .maybeSingle()
 
-        setVehiculoExistente(existente || null)
-        setError('Ya existe un vehículo con esa patente en este taller.')
-      } else {
-        setError(errorInsercion.message)
+          setVehiculoExistente(existente || null)
+          setError('Ya existe un vehículo con esa patente en este taller.')
+        } else {
+          setError(errorInsercion.message)
+        }
+        return
       }
+
+      const { error: errorVinculo } = await supabase
+        .from('clientes_vehiculos')
+        .insert({ cliente_id: clienteId, vehiculo_id: nuevoVehiculo.id, es_propietario: true })
+
+      if (errorVinculo) {
+        setError(errorVinculo.message)
+        return
+      }
+      onVinculado()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
       setGuardando(false)
-      return
     }
-
-    const { error: errorVinculo } = await supabase
-      .from('clientes_vehiculos')
-      .insert({ cliente_id: clienteId, vehiculo_id: nuevoVehiculo.id, es_propietario: true })
-
-    setGuardando(false)
-    if (errorVinculo) {
-      setError(errorVinculo.message)
-      return
-    }
-    onVinculado()
   }
 
   return (

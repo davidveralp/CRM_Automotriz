@@ -18,7 +18,7 @@ function Menu() {
   const { usuario, cerrarSesion } = useAuth()
 
   return (
-    <nav className="flex w-60 flex-col justify-between border-r border-slate-200 bg-white p-4">
+    <nav className="flex w-60 flex-col justify-between border-r border-slate-200 bg-white p-4 print:hidden">
       <div>
         <p className="text-lg font-semibold text-slate-800">CRM</p>
         <p className="mb-6 truncate text-xs text-slate-400">{usuario?.empresas?.nombre}</p>
@@ -43,6 +43,16 @@ function Menu() {
             }
           >
             Clientes
+          </NavLink>
+          <NavLink
+            to="/ingresos/nuevo"
+            className={({ isActive }) =>
+              `block rounded px-3 py-2 text-sm ${
+                isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+              }`
+            }
+          >
+            Nuevo ingreso
           </NavLink>
         </div>
       </div>

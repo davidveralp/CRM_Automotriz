@@ -21,21 +21,26 @@ export function AuthProvider({ children }) {
         return
       }
 
-      const { data, error: errorConsulta } = await supabase
-        .from('usuarios')
-        .select('id, empresa_id, nombre_completo, correo, rol, activo, empresas(nombre)')
-        .eq('id', sesionActual.user.id)
-        .maybeSingle()
+      try {
+        const { data, error: errorConsulta } = await supabase
+          .from('usuarios')
+          .select('id, empresa_id, nombre_completo, correo, rol, activo, empresas(nombre)')
+          .eq('id', sesionActual.user.id)
+          .maybeSingle()
 
-      if (!activo) return
+        if (!activo) return
 
-      if (errorConsulta) {
-        setError(errorConsulta.message)
-      } else {
-        setUsuario(data)
-        setError(null)
+        if (errorConsulta) {
+          setError(errorConsulta.message)
+        } else {
+          setUsuario(data)
+          setError(null)
+        }
+      } catch (excepcion) {
+        if (activo) setError(excepcion.message || 'No se pudo conectar con el servidor.')
+      } finally {
+        if (activo) setCargando(false)
       }
-      setCargando(false)
     }
 
     supabase.auth.getSession().then(({ data }) => {

@@ -1,5 +1,68 @@
 # Registro de cambios
 
+## 2026-09-13 — Bloque 3: Nuevo Ingreso (Tipo A/B) con firma
+
+**Qué se entrega:** el taller puede recibir un vehículo. Ingreso Tipo A
+(diagnóstico) o Tipo B (servicio agendado), con inspección de ingreso y
+firma digital del cliente, más un comprobante imprimible.
+
+**Definición resuelta con el cliente:** numeración de OT — serie nueva,
+propia del CRM, empieza en **14000**. Las OT anteriores de Dimasoft no se
+numeran en el CRM.
+
+### Base de datos (`supabase/migrations/0003_ingresos.sql`)
+- `empresas.siguiente_numero_ot`: cada empresa lleva su propio contador
+  (no una secuencia global de Postgres), porque el esquema es multi-tenant
+  y una secuencia compartida filtraría el volumen entre talleres distintos.
+  El trigger `asignar_numero_ot()` hace un `UPDATE` atómico sobre esa fila
+  al crear el trabajo (nunca al cerrarlo, y nunca con `count(*) + 1`).
+- `trabajos_taller`: la OT. Todavía sin columnas de costo/precio a
+  propósito — el asesor carga el "qué" sin precios; el "cuánto" lo agrega
+  el encargado de presupuestos en el Bloque 5 (`ot_detalle`).
+- `inspecciones_ingreso`: daños visibles, accesorios, observaciones,
+  preguntas de descubrimiento (solo Tipo A) y firma (PNG en base64, no
+  Storage — volumen bajo hoy, revisar cuando el Bloque 6 agregue fotos).
+- Alta de OT e inspección restringida a asesor/admin/socia (según el spec:
+  "1 · RECEPCIÓN asesor"); lectura y avance de estado abiertos a cualquier
+  persona activa de la empresa.
+- **Sin ejecutar contra Postgres real**, igual que el Bloque 2 — revisada
+  línea por línea, falta correrla contra el Supabase real del cliente.
+
+### Interfaz
+- `NuevoIngreso.jsx`: busca vehículo por patente; si existe, confirma
+  cliente (o pregunta cuál si tiene más de uno vinculado); si no existe,
+  da de alta vehículo y cliente nuevos in place (con el mismo aviso de
+  duplicados del Bloque 2). Formulario de inspección + firma, y al guardar
+  actualiza también `vehiculos.kilometraje` (con aviso, no bloqueo, si el
+  valor nuevo es menor al último registrado).
+- `FirmaCanvas.jsx`: firma a mano alzada en un `<canvas>`, sin librería
+  externa.
+- El "documento" del ingreso es una vista imprimible (`window.print()`),
+  no un PDF generado en el servidor — el asesor o el cliente lo guardan
+  como PDF desde el navegador. Evita depender de una librería o Edge
+  Function de PDF que hoy no hace falta.
+
+### Corrección de robustez encontrada al probar (no un bug del Bloque 3 solo)
+Ninguna pantalla tenía `try/catch` alrededor de las llamadas a Supabase: si
+la conexión fallaba a mitad de una consulta, el botón podía quedar
+"Guardando…"/"Buscando…" sin recuperarse nunca, y en el caso de
+`AuthContext`, un fallo de red al cargar el perfil mostraba el mensaje
+equivocado ("cuenta sin rol asignado") en vez del error real. Se corrigió
+en `AuthContext.jsx`, `RutaProtegida.jsx`, `Clientes.jsx`,
+`ClienteDetalle.jsx` y `NuevoIngreso.jsx`: todas las llamadas ahora usan
+`try/catch/finally`, así el estado de carga siempre se libera y se muestra
+un mensaje real. Se verificó en el navegador simulando una caída de red
+real (dominio de Supabase inexistente): con esto, el flujo se recupera
+solo, sin quedar nunca colgado.
+
+### Pendiente para este bloque
+- Probar el flujo completo (buscar → crear vehículo/cliente → firmar →
+  guardar) contra el Supabase real: en este entorno solo se pudo probar
+  hasta donde llega sin credenciales reales (la búsqueda por patente falla
+  por red antes de llegar a los pasos siguientes).
+
+---
+
 ## 2026-09-12 — Bloque 2: clientes y vehículos
 
 **Qué se entrega:** el núcleo del CRM — alta, búsqueda y edición de clientes,
