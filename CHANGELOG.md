@@ -1,5 +1,66 @@
 # Registro de cambios
 
+## 2026-09-12 — Bloque 2: clientes y vehículos
+
+**Qué se entrega:** el núcleo del CRM — alta, búsqueda y edición de clientes,
+con vehículos vinculados. "Cartera completa y consultable" en el sentido de
+pantallas y esquema; la carga real de datos de Didial (histórico de
+Dimasoft) queda pendiente hasta tener los archivos de exportación.
+
+### Base de datos (`supabase/migrations/0002_clientes_vehiculos.sql`)
+- `clientes`: `rut_norm`/`telefono_norm`/(patente ya cubierta en `vehiculos`)
+  como columnas `GENERATED ALWAYS`, con validación de dígito verificador
+  chileno (`rut_valido`, módulo 11) como `CHECK`. Índice único de RUT
+  **deliberadamente no incluido todavía** — hoy solo el 8,7% de los clientes
+  tiene RUT y es esperable que haya duplicados sin resolver; se agrega en una
+  migración posterior, después de fusionar duplicados (definición pendiente
+  del spec original).
+- `vehiculos`: `patente_norm` generado (solo alfanumérico, mayúsculas) con
+  índice **único por empresa** desde el día 1, como pide el spec.
+- `clientes_vehiculos`: tabla puente muchos-a-muchos (no una FK simple
+  `vehiculo.cliente_id`) para vehículos con más de un dueño/conductor —
+  idea tomada de la documentación de arquitectura de la plataforma, no
+  estaba en el spec original pero cubre casos reales (flotas de empresas).
+- `clientes_buscar_posibles_duplicados()`: función que el frontend llama
+  ANTES de insertar (por RUT exacto, teléfono exacto o similitud de nombre
+  vía `pg_trgm`) para avisar, no bloquear.
+- Borrado lógico de clientes/vehículos restringido a `admin` mediante un
+  trigger (`impedir_eliminacion_logica_sin_admin`), porque RLS no puede
+  distinguir "edité un campo" de "anulé la ficha" dentro del mismo `UPDATE`.
+- `ON DELETE RESTRICT` (nunca `CASCADE`) entre clientes/vehículos y la tabla
+  puente — un `DELETE` físico accidental no debe poder arrastrar historial.
+
+**Nota de honestidad:** esta migración se revisó línea por línea pero no se
+ejecutó contra un Postgres real (no hay Docker/psql disponible en este
+entorno). Hay que correrla contra el proyecto Supabase real antes de
+confiar en ella en producción.
+
+### Interfaz
+- `Clientes.jsx`: búsqueda por nombre/RUT/teléfono, listado, alta de cliente
+  nuevo con aviso de posibles duplicados (checkbox explícito para crear
+  igual si el usuario confirma que es una persona distinta).
+- `ClienteDetalle.jsx`: edición de los datos del cliente y gestión de sus
+  vehículos — alta de vehículo nuevo, con manejo explícito del error de
+  patente duplicada (código `23505` de Postgres) ofreciendo vincular el
+  vehículo existente en vez de fallar en seco.
+
+### Corrección a una verificación automática existente
+`scripts/verificar-columnas.mjs` tenía un bug real: cuando un archivo hace
+varias llamadas `.from(tabla)` seguidas, le atribuía a la primera tabla el
+`.insert()/.update()` que en realidad pertenecía a una llamada posterior
+del archivo (la ventana de búsqueda no se detenía en el siguiente `.from(`).
+Apareció al construir `ClienteDetalle.jsx`, que sí tiene ese patrón. Corregido
+y probado con casos sembrados a propósito (columna inventada, tablas
+mezcladas) antes de seguir.
+
+### Pendiente para este bloque
+- Falta el criterio de fusión de clientes duplicados (definición pendiente
+  del spec original) para la migración real de datos históricos.
+- Falta la carga real de datos de Didial — se necesitan los archivos de
+  exportación de Dimasoft para poder migrar de verdad.
+
+---
+
 ## 2026-09-12 (corrección) — Multi-tenant desde el Bloque 1
 
 **Qué cambió:** se agregó la tabla `empresas` (un tenant por taller) y

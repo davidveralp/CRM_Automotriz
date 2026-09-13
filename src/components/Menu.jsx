@@ -22,17 +22,29 @@ function Menu() {
       <div>
         <p className="text-lg font-semibold text-slate-800">CRM</p>
         <p className="mb-6 truncate text-xs text-slate-400">{usuario?.empresas?.nombre}</p>
-        <NavLink
-          to="/"
-          end
-          className={({ isActive }) =>
-            `block rounded px-3 py-2 text-sm ${
-              isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-            }`
-          }
-        >
-          Inicio
-        </NavLink>
+        <div className="flex flex-col gap-1">
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) =>
+              `block rounded px-3 py-2 text-sm ${
+                isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+              }`
+            }
+          >
+            Inicio
+          </NavLink>
+          <NavLink
+            to="/clientes"
+            className={({ isActive }) =>
+              `block rounded px-3 py-2 text-sm ${
+                isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+              }`
+            }
+          >
+            Clientes
+          </NavLink>
+        </div>
       </div>
       {usuario && (
         <div className="border-t border-slate-200 pt-4 text-sm">

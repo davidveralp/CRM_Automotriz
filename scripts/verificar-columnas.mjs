@@ -56,13 +56,23 @@ function extraerPrimerObjetoBalanceado(codigo, desde) {
 function buscarLlamadasInsertUpdate(codigo) {
   const llamadas = []
   const regexFrom = /\.from\(\s*['"`](\w+)['"`]\s*\)/g
+  const posicionesFrom = []
   let coincidencia
+
   while ((coincidencia = regexFrom.exec(codigo))) {
-    const tabla = coincidencia[1]
-    const ventana = codigo.slice(regexFrom.lastIndex, regexFrom.lastIndex + 3000)
+    posicionesFrom.push({ tabla: coincidencia[1], inicio: coincidencia.index, fin: regexFrom.lastIndex })
+  }
+
+  for (let i = 0; i < posicionesFrom.length; i++) {
+    const { tabla, fin } = posicionesFrom[i]
+    // La ventana de búsqueda termina donde empieza el próximo .from(...) del
+    // archivo (o a los 3000 caracteres): así no se le atribuye a esta tabla
+    // el insert/update que en realidad pertenece a la siguiente llamada.
+    const finVentana = i + 1 < posicionesFrom.length ? Math.min(posicionesFrom[i + 1].inicio, fin + 3000) : fin + 3000
+    const ventana = codigo.slice(fin, finVentana)
     const matchOperacion = /\.(insert|update|upsert)\(/.exec(ventana)
     if (!matchOperacion) continue
-    const posicionAbs = regexFrom.lastIndex + matchOperacion.index + matchOperacion[0].length
+    const posicionAbs = fin + matchOperacion.index + matchOperacion[0].length
     const cuerpoObjeto = extraerPrimerObjetoBalanceado(codigo, posicionAbs)
     if (cuerpoObjeto === null) continue
     llamadas.push({ tabla, operacion: matchOperacion[1], claves: extraerClavesDeObjeto(cuerpoObjeto) })
