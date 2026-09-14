@@ -12,6 +12,11 @@ import globals from 'globals'
 //      efectos durante el render, así que un useEffect escrito antes de la
 //      variable que usa debe marcarse aunque su cuerpo corra después.
 export default [
+  // `verificar` corre lint ANTES de `vite build`, así que si `dist/` quedó
+  // de una build anterior, ESLint lo relintea como si fuera código fuente
+  // (service worker minificado incluido) y explota con cientos de falsos
+  // errores. `dist` está en .gitignore pero ESLint no lo lee solo.
+  { ignores: ['dist/**', 'dist-ssr/**'] },
   js.configs.recommended,
   {
     files: ['**/*.{js,jsx}'],

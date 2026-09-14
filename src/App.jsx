@@ -13,6 +13,7 @@ import TrabajoDetalle from './pages/TrabajoDetalle'
 import RadarSesion from './pages/RadarSesion'
 import Oportunidades from './pages/Oportunidades'
 import EncuestaPublica from './pages/EncuestaPublica'
+import Agenda from './pages/Agenda'
 
 function Layout({ children }) {
   return (
@@ -48,6 +49,7 @@ function App() {
           <Route path="/trabajos/:id" element={paginaProtegida(<TrabajoDetalle />)} />
           <Route path="/trabajos/:id/radar" element={paginaProtegida(<RadarSesion />)} />
           <Route path="/oportunidades" element={paginaProtegida(<Oportunidades />)} />
+          <Route path="/agenda" element={paginaProtegida(<Agenda />)} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

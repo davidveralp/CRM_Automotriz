@@ -1,5 +1,87 @@
 # Registro de cambios
 
+## 2026-09-14 — Bloque 8: Recepción (agenda y capacidad por isla)
+
+**Qué se entrega:** agenda de citas con capacidad real por tipo de isla.
+WhatsApp (Meta Cloud API) queda explícitamente fuera de este bloque a
+pedido del cliente — requiere verificación de negocio y aprobación de
+plantillas, un proceso externo que puede tardar días — y se retoma como
+bloque aparte cuando esas credenciales estén listas.
+
+### Definición pendiente resuelta con el cliente (bloqueaba este bloque)
+El spec original decía "5 vehículos/día con 4 islas", que no cuadraba. La
+capacidad real, aclarada con el cliente: **4 islas de taller mecánico, 2 de
+servicio rápido, 1 de alineación, 1 de pintura, 1 de lavado** (9 en total) —
+`tipos_isla` quedó como catálogo por empresa (no una lista fija en código)
+porque es multi-tenant: cada taller que se sume a la plataforma va a tener
+su propia distribución.
+
+### Corrección real encontrada después de la primera versión
+La primera versión de `citas_cupos_disponibles` (migración `0009`) contaba
+"1 cita = 1 cupo por todo el día" — el cliente corrigió esto de inmediato:
+una mantención de taller mecánico dura 1-2h de las 8h disponibles (una isla
+recibe varios vehículos en el día, no uno), servicio rápido/alineación
+duran ~30 min, y pintura no tiene duración definida. Contar por día completo
+subestimaba muchísimo la capacidad real. Se corrigió en `0010` (no se editó
+`0009`, que ya había corrido en producción) agregando
+`citas.duracion_estimada_minutos` y reescribiendo la función para comparar
+**solapamiento de horario** (candidato vs. citas existentes ese día), no un
+conteo plano. Duración u hora ausente se trata como "ocupa el cupo hasta el
+cierre del día calendario" — conservador a propósito: mejor sobreestimar la
+ocupación que prometer un cupo que en realidad no está libre. El frontend
+replica el mismo criterio en `picoOcupacion()` (barrido de eventos
+inicio/fin) para que las tarjetas del día muestren el pico real de
+ocupación simultánea, no un conteo plano.
+
+Probado contra producción: dos citas de Alineación (capacidad 1) el mismo
+día en horarios que NO se solapan (09:00-09:30 y 10:00-10:30) no generaron
+aviso de sobrecupo (pico correcto: 1/1); una tercera a las 09:15 -que sí se
+solapa con la primera- sí mostró "Sin cupos disponibles a esa hora" de
+inmediato.
+
+### Base de datos (`0009_agenda.sql`, `0010_agenda_duracion.sql`)
+- `tipos_isla`: catálogo por empresa (nombre, capacidad, orden), sembrado
+  con los 5 tipos reales de Didial.
+- `citas`: reserva de una isla en una fecha/hora, con `duracion_estimada_minutos`
+  opcional, vehículo opcional (se agenda por teléfono sin patente confirmada
+  a veces) y `trabajo_id` opcional para vincular manualmente al Nuevo Ingreso
+  real cuando el vehículo llega (sin automatismo todavía).
+- `citas_cupos_disponibles()`: cupos por solapamiento de horario, uso como
+  aviso -no bloqueo- en el frontend, mismo criterio "avisa, no bloquea" que
+  ya se usa para duplicados de cliente (Bloque 2).
+- RLS: alta/edición de citas para asesor/recepcionista/admin/socia (mismo
+  criterio de "1 · RECEPCIÓN" del Bloque 3); lectura abierta a cualquiera
+  activo de la empresa.
+- `categoria_servicio` de `trabajos_taller` (Bloque 3/4, ligado al campo de
+  ClickUp) se dejó fuera a propósito de este catálogo: cubre solo 3 valores
+  atados a esa integración externa y no alcanza para alineación ni lavado.
+
+### Interfaz (`Agenda.jsx`)
+- Selector de fecha, tarjetas de ocupación pico por isla (colorea ámbar si
+  se pasó de capacidad), tabla de citas del día con cambio de estado inline
+  (mismo patrón que `Oportunidades.jsx`).
+- Formulario "Nueva cita": isla, hora y duración opcionales (con pista de
+  duración típica según la isla elegida), búsqueda/alta de cliente igual que
+  en `NuevoIngreso.jsx`, vehículo opcional si el cliente ya tiene alguno
+  vinculado. Aviso de sobrecupo con checkbox explícito para agendar igual.
+
+### Bug real encontrado y corregido (no relacionado a este bloque)
+`npm run verificar` corre `eslint` ANTES de `vite build`. Si `dist/` quedaba
+de una build anterior en el mismo entorno, ESLint lo relinteaba como código
+fuente (service worker minificado incluido) y explotaba con ~600 errores
+falsos. `dist/` está en `.gitignore` pero ESLint no lo lee solo. Corregido
+agregando `{ ignores: ['dist/**', 'dist-ssr/**'] }` a `eslint.config.js`.
+
+### Pendiente para este bloque
+- Vincular `citas.trabajo_id` automáticamente desde `NuevoIngreso.jsx`
+  cuando el vehículo llega de verdad — hoy es un paso manual (o simplemente
+  no se usa) sin UI todavía.
+- WhatsApp (Meta Cloud API): pendiente de credenciales, bloque aparte.
+- Sin pantalla de administración para editar `tipos_isla` (capacidad,
+  agregar/quitar islas) — hoy solo se puede ajustar por SQL directo.
+
+---
+
 ## 2026-09-14 — Bloque 7: postventa (encuestas de satisfacción)
 
 **Qué se entrega:** al entregar una OT, se agenda sola una encuesta de

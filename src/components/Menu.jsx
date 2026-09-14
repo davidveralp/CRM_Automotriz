@@ -35,6 +35,9 @@ function Menu() {
           <NavLink to="/clientes" className={claseEnlace}>
             Clientes
           </NavLink>
+          <NavLink to="/agenda" className={claseEnlace}>
+            Agenda
+          </NavLink>
           <NavLink to="/ingresos/nuevo" className={claseEnlace}>
             Nuevo ingreso
           </NavLink>
