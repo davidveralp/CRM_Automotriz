@@ -12,6 +12,12 @@ const ETIQUETAS_ROL = {
   recepcionista: 'Recepcionista',
 }
 
+function claseEnlace({ isActive }) {
+  return `block rounded px-3 py-2 text-sm ${
+    isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+  }`
+}
+
 // Vive fuera del ErrorBoundary de cada página: si el contenido revienta,
 // el menú (y el botón de cerrar sesión) debe seguir funcionando.
 function Menu() {
@@ -23,36 +29,17 @@ function Menu() {
         <p className="text-lg font-semibold text-slate-800">CRM</p>
         <p className="mb-6 truncate text-xs text-slate-400">{usuario?.empresas?.nombre}</p>
         <div className="flex flex-col gap-1">
-          <NavLink
-            to="/"
-            end
-            className={({ isActive }) =>
-              `block rounded px-3 py-2 text-sm ${
-                isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-              }`
-            }
-          >
+          <NavLink to="/" end className={claseEnlace}>
             Inicio
           </NavLink>
-          <NavLink
-            to="/clientes"
-            className={({ isActive }) =>
-              `block rounded px-3 py-2 text-sm ${
-                isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-              }`
-            }
-          >
+          <NavLink to="/clientes" className={claseEnlace}>
             Clientes
           </NavLink>
-          <NavLink
-            to="/ingresos/nuevo"
-            className={({ isActive }) =>
-              `block rounded px-3 py-2 text-sm ${
-                isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-              }`
-            }
-          >
+          <NavLink to="/ingresos/nuevo" className={claseEnlace}>
             Nuevo ingreso
+          </NavLink>
+          <NavLink to="/trabajos" className={claseEnlace}>
+            Trabajos
           </NavLink>
         </div>
       </div>

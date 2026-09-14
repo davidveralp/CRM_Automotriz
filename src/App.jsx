@@ -8,6 +8,8 @@ import Inicio from './pages/Inicio'
 import Clientes from './pages/Clientes'
 import ClienteDetalle from './pages/ClienteDetalle'
 import NuevoIngreso from './pages/NuevoIngreso'
+import Trabajos from './pages/Trabajos'
+import TrabajoDetalle from './pages/TrabajoDetalle'
 
 function Layout({ children }) {
   return (
@@ -38,6 +40,8 @@ function App() {
           <Route path="/clientes" element={paginaProtegida(<Clientes />)} />
           <Route path="/clientes/:id" element={paginaProtegida(<ClienteDetalle />)} />
           <Route path="/ingresos/nuevo" element={paginaProtegida(<NuevoIngreso />)} />
+          <Route path="/trabajos" element={paginaProtegida(<Trabajos />)} />
+          <Route path="/trabajos/:id" element={paginaProtegida(<TrabajoDetalle />)} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

@@ -1,5 +1,87 @@
 # Registro de cambios
 
+## 2026-09-14 — Bloque 4: sincronización con ClickUp + credenciales reales cerradas
+
+**Qué se entrega:** el esquema y la interfaz para que el taller cargue mano
+de obra y repuestos/insumos/servicios de una OT, y los Edge Functions que
+los sincronizan con ClickUp en ambos sentidos. Probado de punta a punta
+contra la base de datos real de Didial (clientes, vehículos, ingreso, OT,
+tareas y repuestos) — la sincronización con ClickUp en sí (los Edge
+Functions) **todavía no está desplegada ni probada en vivo**, ver pendientes.
+
+### Investigación contra el ClickUp real (antes de programar)
+Con un token de API que compartió el usuario, se inspeccionó la lista real
+"Vehiculos en Taller" (901324296305) en vez de asumir el spec al pie de la
+letra. Hallazgos que cambiaron el diseño: la mano de obra son subtareas
+**directas** de la OT (no anidadas bajo un contenedor "MANO DE OBRA" como
+parecía sugerir una plantilla vieja sin uso real); repuestos/lubricantes e
+insumos/servicio externo sí son checklists, tal como decía el spec; los IDs
+de los campos personalizados reales (N° OT, Patente, Kilometraje, Tipo de
+servicio, etc.) quedaron capturados en `supabase/functions/_shared/clickup.ts`.
+Detalle completo en memoria del proyecto.
+
+### Base de datos (`0004_clickup_sync.sql`, `0005_permisos_postgrest.sql`)
+- `tareas_taller` (mano de obra) y `ot_detalle` (las cuatro áreas de la OT,
+  con costo/precio nullable a propósito — se llenan en el Bloque 5).
+  `tareas_taller.estado` guarda el texto tal como lo entrega ClickUp en vez
+  de forzarlo a un CHECK fijo: esos estados los define y cambia ClickUp, no
+  este esquema.
+- `clickup_config`: qué lista de ClickUp usa cada empresa (multi-tenant); el
+  token de la API nunca vive en la base, es secreto de Edge Function.
+- `integraciones_clickup_errores`: ninguna falla de la API queda en
+  silencio.
+- **Hallazgo real corregido en 0005:** después de correr las migraciones a
+  mano en el SQL Editor, PostgREST devolvía "tabla no encontrada" para
+  tablas que sí existían (código `PGRST205`). No era un problema de caché
+  (`NOTIFY pgrst, 'reload schema'` no lo resolvió) sino de permisos: las
+  tablas creadas por SQL suelto no traen los `GRANT` que sí agrega el
+  dashboard de Supabase automáticamente. `0005` deja esto versionado (con
+  `ALTER DEFAULT PRIVILEGES` para que no vuelva a pasar con tablas futuras),
+  en vez de que quede como un paso manual que alguien olvida repetir.
+
+### Edge Functions (`supabase/functions/clickup-sincronizar`,
+### `supabase/functions/clickup-webhook`)
+- `clickup-sincronizar`: crea la tarjeta si no existe, sube tareas
+  pendientes como subtareas y repuestos/insumos/servicios pendientes como
+  ítems de checklist. Cruza el asignado por correo contra los miembros
+  reales del equipo de ClickUp.
+- `clickup-webhook`: recibe cambios desde ClickUp (incluida una subtarea
+  creada directamente ahí por el jefe de taller) y los refleja en la base,
+  verificando la firma HMAC del webhook.
+- Se instaló Deno localmente para poder tipar y lintear estos archivos
+  (`npm run verificar:edge`) — encontró y corrigió errores reales de tipos
+  antes de entregarlos (no se pudieron probar en ejecución real, ver
+  pendientes).
+
+### Interfaz
+- `Trabajos.jsx` (buscar OT por número o patente) y `TrabajoDetalle.jsx`
+  (agregar tareas/repuestos, botón "Sincronizar con ClickUp").
+
+### Credenciales de Supabase — cerradas
+Proyecto real conectado (`ywdozovkhnnvlpckstsd`), `.env` local con
+credenciales reales. Las migraciones 0001-0005 corrieron contra la base
+real con resultados verificados independientemente (no solo por reporte del
+usuario). Probado en el navegador con la cuenta admin real de David: alta
+de cliente, vehículo, ingreso completo (asignó **OT 14000**, confirmando
+que el contador de numeración arranca donde se pidió) y carga de
+tareas/repuestos, todo contra la base de producción. Los datos de prueba
+usados se limpiaron después.
+
+### Pendiente para este bloque
+- **Desplegar los Edge Functions** (`supabase functions deploy
+  clickup-sincronizar` / `clickup-webhook`) — un push al repo no los
+  despliega, hay que hacerlo a mano.
+- Configurar los secretos de Edge Function: `CLICKUP_API_TOKEN` y
+  `CLICKUP_WEBHOOK_SECRET`.
+- Registrar la suscripción del webhook en ClickUp apuntando a la URL del
+  Edge Function ya desplegado (requiere la URL real, que solo existe
+  después de desplegar).
+- Probar el botón "Sincronizar con ClickUp" — no se probó todavía a
+  propósito, para no escribir una tarjeta de prueba en el ClickUp real de
+  producción del taller sin que el usuario lo decida.
+
+---
+
 ## 2026-09-13 — Bloque 3: Nuevo Ingreso (Tipo A/B) con firma
 
 **Qué se entrega:** el taller puede recibir un vehículo. Ingreso Tipo A

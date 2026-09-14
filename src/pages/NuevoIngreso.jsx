@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import FirmaCanvas from '../components/FirmaCanvas'
@@ -317,6 +318,12 @@ function NuevoIngreso() {
             >
               Imprimir / guardar como PDF
             </button>
+            <Link
+              to={`/trabajos/${otCreada.id}`}
+              className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              Ver OT
+            </Link>
             <button
               type="button"
               onClick={() => window.location.reload()}

@@ -12,7 +12,7 @@ export async function invocarFuncion(nombre, opciones) {
     if (error.context && typeof error.context.json === 'function') {
       try {
         const cuerpo = await error.context.json()
-        detalle = cuerpo.error || cuerpo.mensaje || JSON.stringify(cuerpo)
+        detalle = cuerpo.error?.mensaje || cuerpo.mensaje || cuerpo.error || JSON.stringify(cuerpo)
       } catch {
         // El cuerpo no era JSON; nos quedamos con error.message.
       }

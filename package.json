@@ -11,7 +11,8 @@
     "verificar": "npm run lint && node scripts/verificar-columnas.mjs && node scripts/verificar-catalogos-como-texto.mjs && node scripts/verificar-indices-sql.mjs",
     "verificar:columnas": "node scripts/verificar-columnas.mjs",
     "verificar:catalogos": "node scripts/verificar-catalogos-como-texto.mjs",
-    "verificar:indices": "node scripts/verificar-indices-sql.mjs"
+    "verificar:indices": "node scripts/verificar-indices-sql.mjs",
+    "verificar:edge": "deno check supabase/functions/*/index.ts && deno lint --rules-exclude=no-import-prefix,no-inner-declarations supabase/functions/"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
