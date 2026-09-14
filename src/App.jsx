@@ -10,6 +10,7 @@ import ClienteDetalle from './pages/ClienteDetalle'
 import NuevoIngreso from './pages/NuevoIngreso'
 import Trabajos from './pages/Trabajos'
 import TrabajoDetalle from './pages/TrabajoDetalle'
+import RadarSesion from './pages/RadarSesion'
 
 function Layout({ children }) {
   return (
@@ -42,6 +43,7 @@ function App() {
           <Route path="/ingresos/nuevo" element={paginaProtegida(<NuevoIngreso />)} />
           <Route path="/trabajos" element={paginaProtegida(<Trabajos />)} />
           <Route path="/trabajos/:id" element={paginaProtegida(<TrabajoDetalle />)} />
+          <Route path="/trabajos/:id/radar" element={paginaProtegida(<RadarSesion />)} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

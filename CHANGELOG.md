@@ -1,5 +1,62 @@
 # Registro de cambios
 
+## 2026-09-14 — Bloque 6: RADAR y circuito de venta cruzada
+
+**Qué se entrega:** "se mide lo que hoy se pierde". El RADAR del técnico
+(Tipo A) y la revisión del asesor (Tipo B) son la misma herramienta -una
+tabla con columna `origen`, no dos-, diseñada para presentarse al cliente
+con el vehículo todavía arriba: hallazgos con precio referencial, urgencia,
+foto opcional, y una vista de presentación aparte (texto grande, sin ruido
+de edición) para mostrar en la tablet frente al cliente. Probado de punta a
+punta contra producción: sesión → hallazgo con precio → presentación →
+"usar en presupuesto" → aparece en Valorización con el precio referencial
+visible para comparar contra el precio final.
+
+### Base de datos (`0007_radar.sql`)
+- `radar_inspecciones` (la sesión, con `origen` = `radar_tecnico` o
+  `revision_asesor`, derivado automáticamente del tipo de ingreso de la OT)
+  y `radar_hallazgos` (los hallazgos, con `precio_referencial`, `urgencia`,
+  `foto_path` opcional).
+- `ot_detalle.hallazgo_radar_id`: cuando un hallazgo se convierte en ítem de
+  presupuesto, queda vinculado — así el frontend puede avisar si el precio
+  final que ponga el encargado de presupuestos (Bloque 5) se aleja del
+  referencial que vio el cliente durante el RADAR, sin duplicar el dato.
+- **Primer uso real de Supabase Storage** (bucket privado `radar-fotos`,
+  políticas acotadas por empresa usando el primer segmento de la ruta del
+  archivo) — la firma del Bloque 3 se había quedado en base64 a propósito
+  por su bajo volumen; las fotos de RADAR sí lo ameritan.
+- **Error real encontrado al aplicar la migración:** `CREATE OR REPLACE
+  VIEW` no permite insertar columnas nuevas en medio de una vista existente
+  -Postgres lo interpreta como un intento de renombrar la columna que queda
+  desplazada y lo rechaza (`42P16`)-. Hubo que mover las columnas nuevas de
+  `ot_detalle_con_permiso` al final de la lista. Aplica a cualquier vista
+  futura que se extienda: las columnas nuevas siempre van al final.
+
+### Interfaz (`RadarSesion.jsx`)
+- Vista de captura: iniciar sesión, cronómetro en vivo (aviso visual pasados
+  los 10 minutos, sin bloquear), alta de hallazgos con foto opcional
+  (`capture="environment"` para abrir la cámara directo en el celular/tablet).
+- Vista de presentación: se activa al finalizar la sesión, precios grandes y
+  claros, sin controles de edición a la vista — pensada para girarla hacia
+  el cliente, no para que el asesor siga trabajando en ella.
+- `TrabajoDetalle.jsx`: la tabla de Valorización ahora muestra el precio
+  referencial junto al precio final y marca con ⚠ cuando se alejan más de
+  un 20%.
+
+### Nota de sesión de pruebas (no relacionada con el código)
+Una pestaña del navegador que llevaba varias horas abierta con muchas
+recargas entró en un bucle de error 400 repetido (probablemente el service
+worker de la PWA con estado acumulado) y se quedó pegada en "Cargando…".
+Se confirmó que era un artefacto de la sesión de pruebas -no del código-
+abriendo una pestaña nueva, donde todo cargó con normalidad.
+
+### Pendiente para este bloque
+- No se probó la subida de fotos a Storage (el hallazgo de prueba no llevó
+  foto) — revisar el flujo de subida con una foto real antes de confiar en
+  él del todo.
+
+---
+
 ## 2026-09-14 — Bloque 5: valorización y cierre de OT
 
 **Qué se entrega:** "el ciclo del dinero queda cerrado". El encargado de

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import { invocarFuncion } from '../lib/invocarFuncion'
@@ -23,6 +23,17 @@ const ETIQUETA_DECISION = {
 function formatoMoneda(numero) {
   if (numero === null || numero === undefined) return '—'
   return numero.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
+}
+
+// "El sistema avisa si el presupuesto final se aleja demasiado" del precio
+// referencial que se mostró con el cliente presente durante el RADAR.
+const UMBRAL_DIVERGENCIA_PRECIO = 0.2
+
+function precioSeAlejaDelReferencial(item) {
+  if (item.hallazgo_precio_referencial == null || item.precio_unitario == null) return false
+  if (item.hallazgo_precio_referencial === 0) return item.precio_unitario !== 0
+  const diferencia = Math.abs(item.precio_unitario - item.hallazgo_precio_referencial) / item.hallazgo_precio_referencial
+  return diferencia > UMBRAL_DIVERGENCIA_PRECIO
 }
 
 function nombreCliente(cliente) {
@@ -83,7 +94,7 @@ function TrabajoDetalle() {
         // NULL solos si el usuario no tiene tiene_acceso_montos().
         supabase
           .from('ot_detalle_con_permiso')
-          .select('id, area, detalle, cantidad, costo_unitario, precio_unitario, total_linea, verificado, decision, motivo_rechazo, fecha_postergado, presupuesto_id')
+          .select('id, area, detalle, cantidad, costo_unitario, precio_unitario, total_linea, verificado, decision, motivo_rechazo, fecha_postergado, presupuesto_id, hallazgo_precio_referencial')
           .eq('trabajo_id', id)
           .order('creado_en'),
         supabase.from('presupuestos_taller').select('id, correlativo, estado, creado_en').eq('trabajo_id', id).order('creado_en', { ascending: false }),
@@ -286,18 +297,26 @@ function TrabajoDetalle() {
             {nombreCliente(trabajo.clientes)} · Estado: {trabajo.estado}
           </p>
         </div>
-        <div className="text-right">
-          <button
-            type="button"
-            onClick={sincronizarConClickUp}
-            disabled={sincronizando}
-            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+        <div className="flex items-start gap-2 text-right">
+          <Link
+            to={`/trabajos/${id}/radar`}
+            className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
-            {sincronizando ? 'Sincronizando…' : 'Sincronizar con ClickUp'}
-          </button>
-          {trabajo.clickup_task_id && (
-            <p className="mt-1 text-xs text-slate-400">Tarjeta ya creada en ClickUp</p>
-          )}
+            {trabajo.tipo_ingreso === 'diagnostico' ? 'RADAR' : 'Revisión del asesor'}
+          </Link>
+          <div>
+            <button
+              type="button"
+              onClick={sincronizarConClickUp}
+              disabled={sincronizando}
+              className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {sincronizando ? 'Sincronizando…' : 'Sincronizar con ClickUp'}
+            </button>
+            {trabajo.clickup_task_id && (
+              <p className="mt-1 text-xs text-slate-400">Tarjeta ya creada en ClickUp</p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -481,6 +500,12 @@ function TrabajoDetalle() {
                         onBlur={(evento) => actualizarPrecioItem(item.id, 'precio_unitario', evento.target.value)}
                         className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
                       />
+                      {item.hallazgo_precio_referencial != null && (
+                        <p className={`mt-1 text-xs ${precioSeAlejaDelReferencial(item) ? 'font-medium text-amber-700' : 'text-slate-400'}`}>
+                          Ref: {formatoMoneda(item.hallazgo_precio_referencial)}
+                          {precioSeAlejaDelReferencial(item) && ' ⚠ se aleja del referencial'}
+                        </p>
+                      )}
                     </td>
                   )}
                   {tieneAccesoMontos && <td className="px-3 py-2 text-slate-800">{formatoMoneda(item.total_linea)}</td>}
