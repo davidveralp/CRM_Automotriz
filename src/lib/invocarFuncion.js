@@ -20,5 +20,7 @@ export async function invocarFuncion(nombre, opciones) {
     throw new Error(`${nombre}: ${detalle}`)
   }
 
-  return data
+  // Toda Edge Function de este proyecto responde { data: {...} } en éxito;
+  // se desenvuelve acá para que cada página lea los campos directamente.
+  return data?.data ?? data
 }

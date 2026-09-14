@@ -11,6 +11,8 @@ import NuevoIngreso from './pages/NuevoIngreso'
 import Trabajos from './pages/Trabajos'
 import TrabajoDetalle from './pages/TrabajoDetalle'
 import RadarSesion from './pages/RadarSesion'
+import Oportunidades from './pages/Oportunidades'
+import EncuestaPublica from './pages/EncuestaPublica'
 
 function Layout({ children }) {
   return (
@@ -37,6 +39,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/encuesta/:token" element={<EncuestaPublica />} />
           <Route path="/" element={paginaProtegida(<Inicio />)} />
           <Route path="/clientes" element={paginaProtegida(<Clientes />)} />
           <Route path="/clientes/:id" element={paginaProtegida(<ClienteDetalle />)} />
@@ -44,6 +47,7 @@ function App() {
           <Route path="/trabajos" element={paginaProtegida(<Trabajos />)} />
           <Route path="/trabajos/:id" element={paginaProtegida(<TrabajoDetalle />)} />
           <Route path="/trabajos/:id/radar" element={paginaProtegida(<RadarSesion />)} />
+          <Route path="/oportunidades" element={paginaProtegida(<Oportunidades />)} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

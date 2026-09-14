@@ -1,5 +1,84 @@
 # Registro de cambios
 
+## 2026-09-14 — Bloque 7: postventa (encuestas de satisfacción)
+
+**Qué se entrega:** al entregar una OT, se agenda sola una encuesta de
+satisfacción para el día siguiente; un botón manual de administración la
+envía por correo con un enlace público de una sola respuesta. Probado de
+punta a punta contra producción: cliente → vehículo → ingreso → "marcar
+como entregado" (dispara el trigger) → adelantar la fecha agendada a hoy →
+botón "Enviar encuestas pendientes" → envío real via Brevo → responder desde
+la página pública sin sesión → verificado que queda protegida contra
+reenvío.
+
+### Base de datos (`0008_postventa.sql`)
+- `encuestas`: una por `trabajo_id` (constraint único — no se duplica si el
+  estado pasa por `entregado` más de una vez), con `token` aleatorio propio
+  (no reutiliza ningún id interno) y `calificacion` acotada a 1-5.
+- Trigger `programar_encuesta_postventa` en `trabajos_taller` (AFTER UPDATE):
+  si el estado cambia a `entregado`, agenda la encuesta para el día
+  siguiente a la fecha de entrega. `on conflict (trabajo_id) do nothing` la
+  hace segura ante reintentos.
+- **Acceso público sin RLS:** el token es un secreto que el cliente trae en
+  la URL, no algo que RLS pueda validar (RLS filtra por *quién* consulta, no
+  por *qué valor* trae). Se resolvió con dos funciones `SECURITY DEFINER` de
+  superficie mínima — `encuesta_obtener_por_token` (solo lectura, datos de
+  presentación) y `encuesta_responder` (solo escribe calificación/comentario
+  de esa fila) — con `execute` otorgado a `anon`, y **sin ningún grant
+  directo de `anon` sobre la tabla `encuestas`**.
+- `integraciones_brevo_errores`: mismo patrón que los errores de ClickUp del
+  Bloque 4 — ninguna falla de envío queda en silencio.
+
+### Edge Function (`enviar-encuestas-pendientes`)
+- Recorre todas las empresas (usa `service_role` a propósito: es un job de
+  sistema, no la acción de un usuario dentro de su tenant), manda las
+  encuestas cuya fecha agendada ya llegó y no se han enviado, vía Brevo.
+- **Disparo manual por ahora** (botón en Oportunidades, solo admin/socia).
+  Automatizarlo con `pg_cron` + Supabase Vault es un paso aparte pendiente,
+  a propósito no incluido en una migración — eso obligaría a dejar el
+  `service_role key` escrito en un archivo versionado.
+
+### Interfaz
+- `EncuestaPublica.jsx`: ruta pública `/encuesta/:token`, fuera de
+  `RutaProtegida` — sin sesión, sin menú. Calificación con emojis + comentario
+  opcional; si ya fue respondida (o se reintenta responder), muestra el
+  agradecimiento en vez del formulario.
+- `Oportunidades.jsx`: listado de ítems postergados (ya existía el trigger
+  del Bloque 5; nunca se le había puesto pantalla) + botón "Enviar encuestas
+  de postventa pendientes".
+
+### Bug real encontrado y corregido (preexistente desde el Bloque 4)
+`invocarFuncion.js` devolvía el cuerpo completo de la respuesta de la Edge
+Function (`{ data: {...} }`) sin desenvolver, pero tanto `Oportunidades.jsx`
+como la sincronización con ClickUp en `TrabajoDetalle.jsx` leen los campos
+como si vinieran en el nivel raíz (`resultado.enviadas`, no
+`resultado.data.enviadas`). El síntoma con el que se encontró: el mensaje de
+éxito se mostraba como "Encuestas enviadas: de revisadas." (números vacíos).
+Corregido en el wrapper (`return data?.data ?? data`) en vez de en cada
+pantalla, porque todas las Edge Functions de este proyecto siguen esa misma
+convención de respuesta. La sincronización con ClickUp del Bloque 4 tenía el
+mismo defecto y nunca se había notado porque no se había llegado a probar en
+vivo hasta ahora.
+
+### Encontrado al probar el envío real (no es un bug de código)
+El primer envío lo rechazó Brevo por protección de IP nueva ("unrecognised
+IP address" — normal la primera vez que una Edge Function llama desde una
+IP que Brevo no había visto). El usuario desactivó esa restricción en su
+cuenta de Brevo. El segundo intento sí devolvió éxito de la API, pero el
+correo no llegó: el remitente (`serviciotecnico@didial.cl`) no estaba
+verificado en Brevo. El usuario dio de alta el dominio `didial.cl` como
+remitente — la verificación puede tardar hasta 48 horas.
+
+### Pendiente para este bloque
+- **Confirmar la entrega real del correo** una vez que Brevo termine de
+  verificar el dominio `didial.cl` (hasta 48 h desde 2026-09-14) — el flujo
+  completo ya quedó probado hasta el punto de envío; solo falta ver el
+  correo llegar de verdad a una bandeja de entrada.
+- Automatización con `pg_cron` + Supabase Vault para que el envío diario no
+  dependa de que alguien apriete el botón.
+
+---
+
 ## 2026-09-14 — Bloque 6: RADAR y circuito de venta cruzada
 
 **Qué se entrega:** "se mide lo que hoy se pierde". El RADAR del técnico
