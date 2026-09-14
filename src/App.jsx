@@ -15,6 +15,7 @@ import Oportunidades from './pages/Oportunidades'
 import EncuestaPublica from './pages/EncuestaPublica'
 import Agenda from './pages/Agenda'
 import Informes from './pages/Informes'
+import Bodega from './pages/Bodega'
 
 function Layout({ children }) {
   return (
@@ -52,6 +53,10 @@ function App() {
           <Route path="/oportunidades" element={paginaProtegida(<Oportunidades />)} />
           <Route path="/agenda" element={paginaProtegida(<Agenda />)} />
           <Route path="/informes" element={paginaProtegida(<Informes />, ['admin', 'socia'])} />
+          <Route
+            path="/bodega"
+            element={paginaProtegida(<Bodega />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller'])}
+          />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

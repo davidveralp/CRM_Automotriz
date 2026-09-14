@@ -51,6 +51,7 @@ function TrabajoDetalle() {
   const [detalle, setDetalle] = useState([])
   const [presupuestos, setPresupuestos] = useState([])
   const [tecnicos, setTecnicos] = useState([])
+  const [productos, setProductos] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
 
@@ -61,6 +62,7 @@ function TrabajoDetalle() {
   const [areaDetalle, setAreaDetalle] = useState('repuestos')
   const [detalleTexto, setDetalleTexto] = useState('')
   const [cantidadDetalle, setCantidadDetalle] = useState('1')
+  const [productoDetalle, setProductoDetalle] = useState('')
   const [guardandoDetalle, setGuardandoDetalle] = useState(false)
 
   const [generandoPresupuesto, setGenerandoPresupuesto] = useState(false)
@@ -79,6 +81,7 @@ function TrabajoDetalle() {
         { data: detalleData },
         { data: presupuestosData },
         { data: tecnicosData },
+        { data: productosData },
       ] = await Promise.all([
         supabase
           .from('trabajos_taller')
@@ -94,11 +97,12 @@ function TrabajoDetalle() {
         // NULL solos si el usuario no tiene tiene_acceso_montos().
         supabase
           .from('ot_detalle_con_permiso')
-          .select('id, area, detalle, cantidad, costo_unitario, precio_unitario, total_linea, verificado, decision, motivo_rechazo, fecha_postergado, presupuesto_id, hallazgo_precio_referencial')
+          .select('id, area, detalle, cantidad, costo_unitario, precio_unitario, total_linea, verificado, decision, motivo_rechazo, fecha_postergado, presupuesto_id, hallazgo_precio_referencial, producto_id, producto_nombre, producto_stock_actual, producto_unidad_medida')
           .eq('trabajo_id', id)
           .order('creado_en'),
         supabase.from('presupuestos_taller').select('id, correlativo, estado, creado_en').eq('trabajo_id', id).order('creado_en', { ascending: false }),
         supabase.from('usuarios').select('id, nombre_completo').eq('rol', 'tecnico').eq('activo', true),
+        supabase.from('productos').select('id, nombre, stock_actual, unidad_medida').eq('activo', true).order('nombre'),
       ])
 
       if (errorTrabajo) {
@@ -111,6 +115,7 @@ function TrabajoDetalle() {
       setDetalle(detalleData || [])
       setPresupuestos(presupuestosData || [])
       setTecnicos(tecnicosData || [])
+      setProductos(productosData || [])
     } catch {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
     } finally {
@@ -156,6 +161,7 @@ function TrabajoDetalle() {
         area: areaDetalle,
         detalle: detalleTexto,
         cantidad: Number(cantidadDetalle) || 1,
+        producto_id: productoDetalle || null,
       })
       if (errorInsercion) {
         setError(errorInsercion.message)
@@ -163,6 +169,7 @@ function TrabajoDetalle() {
       }
       setDetalleTexto('')
       setCantidadDetalle('1')
+      setProductoDetalle('')
       await cargarTodo()
     } catch {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
@@ -183,6 +190,24 @@ function TrabajoDetalle() {
       }
       // total_linea la calcula la base (columna generada): hay que volver a
       // leerla, no se puede actualizar en el estado local a mano.
+      await cargarTodo()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    }
+  }
+
+  async function alternarVerificado(item) {
+    try {
+      const { error: errorActualizar } = await supabase
+        .from('ot_detalle')
+        .update({ verificado: !item.verificado })
+        .eq('id', item.id)
+      if (errorActualizar) {
+        setError(errorActualizar.message)
+        return
+      }
+      // Si tiene producto vinculado, marcar verificado dispara el descuento
+      // de stock en la base (trigger); recargar para ver el stock al día.
       await cargarTodo()
     } catch {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
@@ -388,13 +413,23 @@ function TrabajoDetalle() {
             {detalle
               .filter((item) => item.area !== 'mano_obra')
               .map((item) => (
-                <li key={item.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                  <span className="text-slate-800">
-                    {item.detalle} <span className="text-slate-400">× {item.cantidad}</span>
-                  </span>
-                  <span className={item.verificado ? 'text-green-600' : 'text-slate-400'}>
-                    {item.verificado ? 'Verificado' : ETIQUETA_AREA[item.area]}
-                  </span>
+                <li key={item.id} className="px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-800">
+                      {item.detalle} <span className="text-slate-400">× {item.cantidad}</span>
+                    </span>
+                    <label className="flex items-center gap-1 text-xs">
+                      <input type="checkbox" checked={item.verificado} onChange={() => alternarVerificado(item)} />
+                      <span className={item.verificado ? 'text-green-600' : 'text-slate-400'}>
+                        {item.verificado ? 'Verificado' : ETIQUETA_AREA[item.area]}
+                      </span>
+                    </label>
+                  </div>
+                  {item.producto_nombre && (
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      Bodega: {item.producto_nombre} (stock {item.producto_stock_actual} {item.producto_unidad_medida})
+                    </p>
+                  )}
                 </li>
               ))}
             {detalle.filter((item) => item.area !== 'mano_obra').length === 0 && (
@@ -415,6 +450,20 @@ function TrabajoDetalle() {
                   </option>
                 ))}
             </select>
+            {(areaDetalle === 'repuestos' || areaDetalle === 'lubricantes_insumos') && productos.length > 0 && (
+              <select
+                value={productoDetalle}
+                onChange={(evento) => setProductoDetalle(evento.target.value)}
+                className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">Sin vincular a bodega</option>
+                {productos.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre} (stock {p.stock_actual} {p.unidad_medida})
+                  </option>
+                ))}
+              </select>
+            )}
             <div className="mb-2 flex gap-2">
               <input
                 required

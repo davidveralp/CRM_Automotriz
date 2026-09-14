@@ -1,5 +1,73 @@
 # Registro de cambios
 
+## 2026-09-14 — Bloque 10: Bodega, etapa 1
+
+**Qué se entrega:** el spec marca este bloque como "el más grande del
+proyecto, conviene dividirlo en etapas" y deja su alcance sin definir a
+propósito -a diferencia de todos los bloques anteriores, no tiene sección
+propia en el spec-. Se acordó con el cliente antes de construir:
+
+1. **Los tres problemas a la vez** (no priorizar uno solo): sin
+   visibilidad de stock real, repuestos de la OT sin descontar inventario,
+   compras a proveedores sin registrar.
+2. **Una sola bodega física** (no hay múltiples ubicaciones todavía).
+3. **Conectado a la OT desde el día 1**, no como etapa separada.
+
+Fuera de esta etapa a propósito, para no sobre-construir el módulo más
+grande del spec de una sola vez: múltiples bodegas, código de barras,
+órdenes de compra con flujo de aprobación, costeo FIFO/promedio ponderado
+(se usa "último costo conocido"), y alertas automáticas de stock bajo por
+correo/WhatsApp (la pantalla sí muestra el aviso visual).
+
+### Base de datos (`0012_bodega.sql`)
+- `proveedores`, `productos` (catálogo con `stock_actual`/`costo_promedio`
+  mantenidos por trigger, nunca editables a mano) y `movimientos_stock`
+  (historial de entradas/salidas/ajustes; `cantidad` positiva = entrada,
+  negativa = salida — el signo ES la dirección, no una columna aparte).
+- `ot_detalle.producto_id`: vínculo opcional al catálogo. Al marcar el
+  ítem `verificado = true` (columna que ya existía desde el Bloque 4 como
+  espejo del `resolved` de ClickUp) se descuenta stock automáticamente —
+  solo en la transición `false→true`, para no descontar dos veces si se
+  edita otra columna del ítem después.
+- **`ot_detalle_con_permiso` (Bloque 5/6) extendida** con `producto_id` +
+  nombre/stock del producto vía join — mismo gotcha ya documentado del
+  Bloque 6: las columnas nuevas de una vista van siempre al final de la
+  lista, nunca en medio (`42P16`).
+- RLS: lectura de bodega abierta a cualquiera activo de la empresa,
+  escritura (incluye costos) restringida a `tiene_acceso_montos()`, mismo
+  rol que ya decide precios en `ot_detalle` desde el Bloque 5.
+
+### Interfaz
+- `Bodega.jsx` (nueva, restringida a admin/socia/encargado de
+  presupuestos/jefe de taller): catálogo con aviso visual de stock bajo
+  mínimo, alta de producto con stock inicial, registro de movimientos
+  (entrada/salida, motivo, proveedor, costo, referencia), panel de
+  proveedores.
+- `TrabajoDetalle.jsx`: el formulario de "Agregar ítem" ahora ofrece
+  vincular un producto del catálogo (solo áreas repuestos/lubricantes e
+  insumos). Se agregó también el control para marcar "Verificado" —**no
+  existía ningún botón para eso en el CRM hasta ahora**: `verificado` solo
+  se movía vía sincronización con ClickUp. Ahora se puede marcar desde
+  cualquiera de los dos lados.
+
+### Probado de punta a punta contra producción
+Producto de prueba con stock inicial 10 (movimiento `ajuste` automático al
+crearlo) → OT nueva con un repuesto vinculado a ese producto, cantidad 2 →
+al marcar "Verificado" el stock bajó a 8 en vivo, con su
+`movimientos_stock` (`motivo: uso_ot`, `cantidad: -2`) → movimiento manual
+de entrada por compra (+5) confirmado subiendo el stock a 13. Los tres
+caminos que escriben en `movimientos_stock` (alta de producto, uso en OT,
+movimiento manual) quedaron verificados por separado.
+
+### Pendiente para este bloque
+- Sin reversión automática si un ítem verificado se desmarca o se edita
+  después de haber descontado stock — hay que hacer un ajuste manual si se
+  corrige un error, documentado como limitación consciente de la etapa 1.
+- Próximas etapas (a definir cuándo el cliente las necesite): múltiples
+  bodegas, órdenes de compra formales, alertas automáticas de stock bajo.
+
+---
+
 ## 2026-09-14 — Bloque 9: Informes y tableros
 
 **Qué se entrega:** "los tres números que definen el estado del negocio"
