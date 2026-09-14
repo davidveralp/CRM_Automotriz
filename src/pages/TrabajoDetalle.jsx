@@ -1,12 +1,28 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import { useAuth } from '../context/AuthContext'
 import { invocarFuncion } from '../lib/invocarFuncion'
 
 const ETIQUETA_AREA = {
+  mano_obra: 'Mano de obra',
   repuestos: 'Repuestos',
   lubricantes_insumos: 'Lubricantes e insumos',
   servicios_externos: 'Servicios externos',
+}
+
+const ROLES_CON_ACCESO_MONTOS = ['socia', 'admin', 'encargado_presupuestos', 'jefe_taller']
+
+const ETIQUETA_DECISION = {
+  pendiente: 'Pendiente',
+  aceptado: 'Aceptado',
+  rechazado: 'Rechazado',
+  postergado: 'Postergado',
+}
+
+function formatoMoneda(numero) {
+  if (numero === null || numero === undefined) return '—'
+  return numero.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
 }
 
 function nombreCliente(cliente) {
@@ -16,9 +32,13 @@ function nombreCliente(cliente) {
 
 function TrabajoDetalle() {
   const { id } = useParams()
+  const { usuario } = useAuth()
+  const tieneAccesoMontos = ROLES_CON_ACCESO_MONTOS.includes(usuario?.rol)
+
   const [trabajo, setTrabajo] = useState(null)
   const [tareas, setTareas] = useState([])
   const [detalle, setDetalle] = useState([])
+  const [presupuestos, setPresupuestos] = useState([])
   const [tecnicos, setTecnicos] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
@@ -32,40 +52,53 @@ function TrabajoDetalle() {
   const [cantidadDetalle, setCantidadDetalle] = useState('1')
   const [guardandoDetalle, setGuardandoDetalle] = useState(false)
 
+  const [generandoPresupuesto, setGenerandoPresupuesto] = useState(false)
+  const [numeroDocumento, setNumeroDocumento] = useState('')
+  const [cerrando, setCerrando] = useState(false)
+
   const [sincronizando, setSincronizando] = useState(false)
   const [resultadoSync, setResultadoSync] = useState(null)
   const [errorSync, setErrorSync] = useState(null)
 
   async function cargarTodo() {
     try {
-      const [{ data: trabajoData, error: errorTrabajo }, { data: tareasData }, { data: detalleData }, { data: tecnicosData }] =
-        await Promise.all([
-          supabase
-            .from('trabajos_taller')
-            .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, clientes(nombre, apellido, razon_social), vehiculos(patente, marca, modelo, anio)')
-            .eq('id', id)
-            .maybeSingle(),
-          supabase
-            .from('tareas_taller')
-            .select('id, descripcion, estado, tecnico_id, clickup_asignado_nombre, usuarios(nombre_completo)')
-            .eq('trabajo_id', id)
-            .order('orden'),
-          supabase
-            .from('ot_detalle')
-            .select('id, area, detalle, cantidad, verificado')
-            .eq('trabajo_id', id)
-            .neq('area', 'mano_obra')
-            .order('creado_en'),
-          supabase.from('usuarios').select('id, nombre_completo').eq('rol', 'tecnico').eq('activo', true),
-        ])
+      const [
+        { data: trabajoData, error: errorTrabajo },
+        { data: tareasData },
+        { data: detalleData },
+        { data: presupuestosData },
+        { data: tecnicosData },
+      ] = await Promise.all([
+        supabase
+          .from('trabajos_taller')
+          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, numero_documento_facturacion, fecha_entrega, clientes(nombre, apellido, razon_social), vehiculos(patente, marca, modelo, anio)')
+          .eq('id', id)
+          .maybeSingle(),
+        supabase
+          .from('tareas_taller')
+          .select('id, descripcion, estado, tecnico_id, clickup_asignado_nombre, usuarios(nombre_completo)')
+          .eq('trabajo_id', id)
+          .order('orden'),
+        // Siempre por la vista, nunca por la tabla: acá costo/precio salen en
+        // NULL solos si el usuario no tiene tiene_acceso_montos().
+        supabase
+          .from('ot_detalle_con_permiso')
+          .select('id, area, detalle, cantidad, costo_unitario, precio_unitario, total_linea, verificado, decision, motivo_rechazo, fecha_postergado, presupuesto_id')
+          .eq('trabajo_id', id)
+          .order('creado_en'),
+        supabase.from('presupuestos_taller').select('id, correlativo, estado, creado_en').eq('trabajo_id', id).order('creado_en', { ascending: false }),
+        supabase.from('usuarios').select('id, nombre_completo').eq('rol', 'tecnico').eq('activo', true),
+      ])
 
       if (errorTrabajo) {
         setError(errorTrabajo.message)
       } else {
         setTrabajo(trabajoData)
+        setNumeroDocumento(trabajoData?.numero_documento_facturacion || '')
       }
       setTareas(tareasData || [])
       setDetalle(detalleData || [])
+      setPresupuestos(presupuestosData || [])
       setTecnicos(tecnicosData || [])
     } catch {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
@@ -124,6 +157,102 @@ function TrabajoDetalle() {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
     } finally {
       setGuardandoDetalle(false)
+    }
+  }
+
+  async function actualizarPrecioItem(itemId, campo, valorTexto) {
+    const valor = valorTexto === '' ? null : Number(valorTexto)
+    if (valorTexto !== '' && Number.isNaN(valor)) return
+
+    try {
+      const { error: errorActualizar } = await supabase.from('ot_detalle').update({ [campo]: valor }).eq('id', itemId)
+      if (errorActualizar) {
+        setError(errorActualizar.message)
+        return
+      }
+      // total_linea la calcula la base (columna generada): hay que volver a
+      // leerla, no se puede actualizar en el estado local a mano.
+      await cargarTodo()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    }
+  }
+
+  async function actualizarDecisionItem(itemId, cambios) {
+    setDetalle((actual) => actual.map((item) => (item.id === itemId ? { ...item, ...cambios } : item)))
+    try {
+      const { error: errorActualizar } = await supabase.from('ot_detalle').update(cambios).eq('id', itemId)
+      if (errorActualizar) {
+        setError(errorActualizar.message)
+        return
+      }
+      // fecha_postergado dispara la creación de la oportunidad en la base;
+      // no hace falta hacer nada más acá, solo refrescar por si algo más
+      // cambió (ej. el trigger).
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    }
+  }
+
+  async function generarPresupuesto() {
+    setGenerandoPresupuesto(true)
+    setError(null)
+    try {
+      const { data: presupuesto, error: errorPresupuesto } = await supabase
+        .from('presupuestos_taller')
+        .insert({ trabajo_id: id, creado_por: usuario.id, estado: 'enviado', fecha_envio: new Date().toISOString() })
+        .select('id, correlativo')
+        .single()
+
+      if (errorPresupuesto) {
+        setError(errorPresupuesto.message)
+        return
+      }
+
+      const idsAIncluir = detalle.filter((item) => item.precio_unitario !== null && !item.presupuesto_id).map((item) => item.id)
+      if (idsAIncluir.length > 0) {
+        const { error: errorVinculo } = await supabase
+          .from('ot_detalle')
+          .update({ presupuesto_id: presupuesto.id })
+          .in('id', idsAIncluir)
+        if (errorVinculo) {
+          setError(errorVinculo.message)
+          return
+        }
+      }
+
+      await cargarTodo()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setGenerandoPresupuesto(false)
+    }
+  }
+
+  async function cerrarTrabajo(evento) {
+    evento.preventDefault()
+    setCerrando(true)
+    setError(null)
+    try {
+      const { error: errorCierre } = await supabase
+        .from('trabajos_taller')
+        .update({
+          estado: 'entregado',
+          numero_documento_facturacion: numeroDocumento || null,
+          fecha_entrega: new Date().toISOString(),
+          entregado_por: usuario.id,
+        })
+        .eq('id', id)
+
+      if (errorCierre) {
+        setError(errorCierre.message)
+        return
+      }
+      await cargarTodo()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setCerrando(false)
     }
   }
 
@@ -237,17 +366,21 @@ function TrabajoDetalle() {
         <section>
           <h2 className="mb-2 text-lg font-semibold text-slate-900">Repuestos, insumos y servicios externos</h2>
           <ul className="mb-3 divide-y divide-slate-100 rounded border border-slate-200 bg-white">
-            {detalle.map((item) => (
-              <li key={item.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                <span className="text-slate-800">
-                  {item.detalle} <span className="text-slate-400">× {item.cantidad}</span>
-                </span>
-                <span className={item.verificado ? 'text-green-600' : 'text-slate-400'}>
-                  {item.verificado ? 'Verificado' : ETIQUETA_AREA[item.area]}
-                </span>
-              </li>
-            ))}
-            {detalle.length === 0 && <li className="px-3 py-3 text-sm text-slate-400">Sin ítems todavía.</li>}
+            {detalle
+              .filter((item) => item.area !== 'mano_obra')
+              .map((item) => (
+                <li key={item.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                  <span className="text-slate-800">
+                    {item.detalle} <span className="text-slate-400">× {item.cantidad}</span>
+                  </span>
+                  <span className={item.verificado ? 'text-green-600' : 'text-slate-400'}>
+                    {item.verificado ? 'Verificado' : ETIQUETA_AREA[item.area]}
+                  </span>
+                </li>
+              ))}
+            {detalle.filter((item) => item.area !== 'mano_obra').length === 0 && (
+              <li className="px-3 py-3 text-sm text-slate-400">Sin ítems todavía.</li>
+            )}
           </ul>
           <form onSubmit={agregarDetalle} className="rounded border border-slate-200 bg-white p-3">
             <select
@@ -255,11 +388,13 @@ function TrabajoDetalle() {
               onChange={(evento) => setAreaDetalle(evento.target.value)}
               className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
-              {Object.entries(ETIQUETA_AREA).map(([valor, etiqueta]) => (
-                <option key={valor} value={valor}>
-                  {etiqueta}
-                </option>
-              ))}
+              {Object.entries(ETIQUETA_AREA)
+                .filter(([valor]) => valor !== 'mano_obra')
+                .map(([valor, etiqueta]) => (
+                  <option key={valor} value={valor}>
+                    {etiqueta}
+                  </option>
+                ))}
             </select>
             <div className="mb-2 flex gap-2">
               <input
@@ -287,6 +422,137 @@ function TrabajoDetalle() {
           </form>
         </section>
       </div>
+
+      <section className="mt-8 max-w-4xl">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-900">Valorización y negociación</h2>
+          {tieneAccesoMontos && (
+            <button
+              type="button"
+              onClick={generarPresupuesto}
+              disabled={generandoPresupuesto}
+              className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {generandoPresupuesto ? 'Generando…' : 'Generar presupuesto'}
+            </button>
+          )}
+        </div>
+
+        {presupuestos.length > 0 && (
+          <p className="mb-2 text-sm text-slate-500">
+            Presupuestos: {presupuestos.map((p) => `${p.correlativo} (${p.estado})`).join(' · ')}
+          </p>
+        )}
+
+        <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate-500">
+              <tr>
+                <th className="px-3 py-2">Área</th>
+                <th className="px-3 py-2">Detalle</th>
+                <th className="px-3 py-2">Cant.</th>
+                {tieneAccesoMontos && <th className="px-3 py-2">Costo</th>}
+                {tieneAccesoMontos && <th className="px-3 py-2">Precio</th>}
+                {tieneAccesoMontos && <th className="px-3 py-2">Total</th>}
+                <th className="px-3 py-2">Decisión</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detalle.map((item) => (
+                <tr key={item.id} className="border-t border-slate-100 align-top">
+                  <td className="px-3 py-2 text-slate-500">{ETIQUETA_AREA[item.area]}</td>
+                  <td className="px-3 py-2 text-slate-800">{item.detalle}</td>
+                  <td className="px-3 py-2 text-slate-600">{item.cantidad}</td>
+                  {tieneAccesoMontos && (
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        defaultValue={item.costo_unitario ?? ''}
+                        onBlur={(evento) => actualizarPrecioItem(item.id, 'costo_unitario', evento.target.value)}
+                        className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                      />
+                    </td>
+                  )}
+                  {tieneAccesoMontos && (
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        defaultValue={item.precio_unitario ?? ''}
+                        onBlur={(evento) => actualizarPrecioItem(item.id, 'precio_unitario', evento.target.value)}
+                        className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                      />
+                    </td>
+                  )}
+                  {tieneAccesoMontos && <td className="px-3 py-2 text-slate-800">{formatoMoneda(item.total_linea)}</td>}
+                  <td className="px-3 py-2">
+                    <select
+                      value={item.decision}
+                      onChange={(evento) => actualizarDecisionItem(item.id, { decision: evento.target.value })}
+                      className="rounded border border-slate-300 px-2 py-1 text-sm"
+                    >
+                      {Object.entries(ETIQUETA_DECISION).map(([valor, etiqueta]) => (
+                        <option key={valor} value={valor}>
+                          {etiqueta}
+                        </option>
+                      ))}
+                    </select>
+                    {item.decision === 'rechazado' && (
+                      <input
+                        placeholder="Motivo"
+                        defaultValue={item.motivo_rechazo || ''}
+                        onBlur={(evento) => actualizarDecisionItem(item.id, { motivo_rechazo: evento.target.value })}
+                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                      />
+                    )}
+                    {item.decision === 'postergado' && (
+                      <input
+                        type="date"
+                        defaultValue={item.fecha_postergado || ''}
+                        onBlur={(evento) => actualizarDecisionItem(item.id, { fecha_postergado: evento.target.value || null })}
+                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                      />
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {detalle.length === 0 && (
+                <tr>
+                  <td colSpan={tieneAccesoMontos ? 7 : 4} className="px-3 py-6 text-center text-slate-400">
+                    Todavía no hay ítems para valorizar.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="mt-8 max-w-md">
+        <h2 className="mb-2 text-lg font-semibold text-slate-900">Cierre</h2>
+        {trabajo.estado === 'entregado' ? (
+          <p className="rounded border border-green-300 bg-green-50 p-3 text-sm text-green-900">
+            Entregado{trabajo.numero_documento_facturacion ? ` · Documento ${trabajo.numero_documento_facturacion}` : ''}
+            {trabajo.fecha_entrega ? ` · ${new Date(trabajo.fecha_entrega).toLocaleString('es-CL')}` : ''}
+          </p>
+        ) : (
+          <form onSubmit={cerrarTrabajo} className="rounded border border-slate-200 bg-white p-3">
+            <label className="mb-1 block text-sm font-medium text-slate-700">N° de documento (Dimasoft)</label>
+            <input
+              value={numeroDocumento}
+              onChange={(evento) => setNumeroDocumento(evento.target.value)}
+              placeholder="Boleta o factura emitida"
+              className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={cerrando}
+              className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {cerrando ? 'Cerrando…' : 'Marcar como entregado'}
+            </button>
+          </form>
+        )}
+      </section>
     </div>
   )
 }

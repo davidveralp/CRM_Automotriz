@@ -1,5 +1,64 @@
 # Registro de cambios
 
+## 2026-09-14 — Bloque 5: valorización y cierre de OT
+
+**Qué se entrega:** "el ciclo del dinero queda cerrado". El encargado de
+presupuestos pone costo y precio a cada línea (mano de obra incluida), arma
+un presupuesto con correlativo propio, el asesor registra la decisión del
+cliente ítem por ítem, y la OT se cierra con el número de documento de
+Dimasoft. Probado de punta a punta contra la base real: valorización →
+presupuesto (**P-00001**) → decisión postergada con fecha → cierre con
+documento — todo confirmado en el navegador, con recarga completa entre
+pasos para descartar estado local falso.
+
+### Base de datos (`0006_valorizacion_cierre.sql`)
+- `presupuestos_taller` con correlativo propio (`P-00001`), mismo patrón que
+  `numero_ot`: contador por empresa, incrementado atómicamente por trigger.
+- `ot_detalle`: se agregan `decision` (pendiente/aceptado/rechazado/
+  postergado), `motivo_rechazo`, `fecha_postergado`, `presupuesto_id`.
+- **Mano de obra ahora tiene precio sin que nadie tenga que acordarse de
+  cargarlo aparte:** un trigger en `tareas_taller` crea (y mantiene
+  sincronizada) una fila `ot_detalle` (`area = 'mano_obra'`) por cada tarea,
+  automáticamente, desde el Bloque 4 en adelante.
+- `oportunidades`: un trigger crea una fila automáticamente cuando un ítem
+  se marca `postergado` con fecha — "es una venta agendada, no una venta
+  perdida", tal como pide el spec.
+- **Protección de precios en dos capas, no solo RLS:** RLS filtra filas, no
+  columnas, y todos los roles de la app comparten el mismo rol de Postgres
+  (`authenticated`), así que "técnicos ven pero no editan precios" no se
+  puede resolver solo con políticas de fila. Se resolvió con (1) un trigger
+  que bloquea insertar/editar costo o precio sin `tiene_acceso_montos()`, y
+  (2) revocar el `SELECT` de esas columnas en la tabla base y exponerlas
+  solo a través de la vista `ot_detalle_con_permiso` (con
+  `security_invoker` para que la RLS de tenant se siga evaluando con el
+  usuario real). **El frontend lee `ot_detalle_con_permiso`, nunca
+  `ot_detalle` directo, para que quien no tiene acceso ni reciba el dato.**
+
+### Interfaz (`TrabajoDetalle.jsx`)
+- Tabla de "Valorización y negociación": costo/precio editables (solo si
+  `tiene_acceso_montos()`), total calculado por la base, decisión por ítem
+  con motivo/fecha condicionales.
+- Botón "Generar presupuesto": crea el presupuesto y vincula los ítems ya
+  precificados que todavía no pertenecían a uno.
+- Sección "Cierre": número de documento de Dimasoft + "Marcar como
+  entregado".
+
+### Bug real encontrado y corregido al probar
+Después de guardar un costo/precio, la columna "Total" (calculada por la
+base) se quedaba en blanco hasta recargar la página entera — el guardado sí
+funcionaba, pero la pantalla no volvía a pedir el valor calculado. Se
+corrigió haciendo que el guardado de precio siempre recargue los datos del
+trabajo después de escribir.
+
+### Pendiente para este bloque
+- No se pudo confirmar por separado (fuera del código) que el trigger de
+  `oportunidades` efectivamente insertó una fila al marcar un ítem como
+  postergado — se validó el comportamiento visible (fecha guardada,
+  reflejada tras recargar) pero no se llegó a leer la tabla `oportunidades`
+  antes de la limpieza de datos de prueba.
+
+---
+
 ## 2026-09-14 — Bloque 4: sincronización con ClickUp + credenciales reales cerradas
 
 **Qué se entrega:** el esquema y la interfaz para que el taller cargue mano
