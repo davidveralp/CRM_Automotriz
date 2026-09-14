@@ -1,5 +1,80 @@
 # Registro de cambios
 
+## 2026-09-14 — Bloque 9: Informes y tableros
+
+**Qué se entrega:** "los tres números que definen el estado del negocio"
+(sección 9 del spec), con su propia advertencia explícita: desconfiar de
+indicadores perfectos, porque un 100% casi siempre significa que la
+medición está mal hecha, no que el negocio sea impecable.
+
+### Los tres indicadores del spec
+1. **Retorno de clientes** — el spec cita 65,9% de vehículos que vienen una
+   sola vez; el informe muestra el % real de clientes con más de una OT.
+2. **Captura de datos en el ingreso** — RUT al 8,7% / kilometraje al 35% en
+   el spec; el informe muestra el % real de clientes con RUT y de OT con
+   kilometraje registrado, para poder verificar si la captura obligatoria
+   del Bloque 3 de verdad mejoró el número.
+3. **Presupuestos por decisión** — el spec marca el "100% aprobados" de
+   Dimasoft como una medición falsa (los rechazos no se registraban); el
+   informe muestra el desglose real (pendiente/aceptado/rechazado/
+   postergado) que el Bloque 5 ya captura.
+
+### Retrabajos por técnico (gap encontrado, no en ningún bloque anterior)
+La sección 4 del spec pide explícitamente "los retrabajos se vinculan a la
+OT original y al mecánico que ejecutó — es la base de la medición de
+calidad", pero ningún bloque numerado lo había construido. Se agregó acá
+por ser justo donde ese dato se consume:
+- `trabajos_taller.trabajo_original_id` (nullable, autorreferencia): se
+  completa a mano en Nuevo Ingreso cuando el asesor detecta que el
+  vehículo vuelve por el mismo problema — aparece un selector opcional
+  solo si ese vehículo ya tiene OT anteriores.
+- El técnico se deriva de `tareas_taller` del trabajo **original** (no del
+  retrabajo): no existe un campo "mecánico responsable" a nivel de OT, la
+  mano de obra ya lo registra tarea por tarea desde el Bloque 4.
+
+Probado de punta a punta: cliente + vehículo → OT 14004 (original) → OT
+14005 con "¿Retrabajo de una OT anterior?" = OT 14004 → verificado por SQL
+que `trabajo_original_id` quedó bien vinculado → tarea de mano de obra de
+prueba insertada en la OT original (simulando una sincronización de
+ClickUp, que no se ejercitó aquí a propósito) → el informe atribuyó
+correctamente el retrabajo al técnico de esa tarea.
+
+### Base de datos (`0011_informes.sql`)
+- Cuatro funciones de solo lectura (`informe_retorno_clientes`,
+  `informe_captura_datos`, `informe_presupuestos_decision`,
+  `informe_retrabajos_por_tecnico`), todas acotadas a `mi_empresa_id()`.
+- **Restricción de acceso no cubierta por RLS de tabla:** "visión para
+  socia y administración" (tabla de bloques del spec) no es un filtro de
+  fila, es una regla sobre quién puede correr la agregación completa. Se
+  resolvió con un chequeo de rol (`es_admin() or es_socia()`) adentro de
+  cada función en vez de una policy — mismo motivo que la protección de
+  precios del Bloque 5: RLS filtra filas, no decide si alguien puede
+  ejecutar una consulta agregada entera.
+
+### Interfaz (`Informes.jsx`)
+- Página nueva, restringida a admin/socia vía `RutaProtegida
+  rolesPermitidos={['admin', 'socia']}` — primera vez que se usa ese
+  parámetro (ya existía en el componente desde el Bloque 1, nunca se había
+  necesitado). `App.jsx` ahora acepta un segundo argumento opcional en
+  `paginaProtegida()` para esto.
+- Cuatro tarjetas con barras de porcentaje simples (CSS, sin librería de
+  gráficos) y una tabla para retrabajos por técnico.
+- `NuevoIngreso.jsx`: selector opcional "¿Retrabajo de una OT anterior?",
+  visible solo cuando el vehículo ya tiene OT previas.
+
+### Pendiente para este bloque
+- El indicador de retorno de clientes y captura de datos son honestos
+  sobre datos de prueba/parciales hasta que se migre la cartera real de
+  Didial (Bloque 11 del spec, "Migración de datos" — no confundir con
+  bloques de construcción, es la migración de datos históricos que sigue
+  pendiente de los archivos de exportación de Dimasoft).
+- Sin informe de conversión RADAR por origen (`radar_tecnico` vs.
+  `revision_asesor`) ni de postventa (calificación promedio de encuestas)
+  — el spec no los pide explícitamente en la sección 9, quedan como
+  candidatos naturales para una iteración futura del tablero.
+
+---
+
 ## 2026-09-14 — Bloque 8: Recepción (agenda y capacidad por isla)
 
 **Qué se entrega:** agenda de citas con capacidad real por tipo de isla.

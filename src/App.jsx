@@ -14,6 +14,7 @@ import RadarSesion from './pages/RadarSesion'
 import Oportunidades from './pages/Oportunidades'
 import EncuestaPublica from './pages/EncuestaPublica'
 import Agenda from './pages/Agenda'
+import Informes from './pages/Informes'
 
 function Layout({ children }) {
   return (
@@ -26,10 +27,10 @@ function Layout({ children }) {
   )
 }
 
-function paginaProtegida(elemento) {
+function paginaProtegida(elemento, rolesPermitidos) {
   return (
     <Layout>
-      <RutaProtegida>{elemento}</RutaProtegida>
+      <RutaProtegida rolesPermitidos={rolesPermitidos}>{elemento}</RutaProtegida>
     </Layout>
   )
 }
@@ -50,6 +51,7 @@ function App() {
           <Route path="/trabajos/:id/radar" element={paginaProtegida(<RadarSesion />)} />
           <Route path="/oportunidades" element={paginaProtegida(<Oportunidades />)} />
           <Route path="/agenda" element={paginaProtegida(<Agenda />)} />
+          <Route path="/informes" element={paginaProtegida(<Informes />, ['admin', 'socia'])} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

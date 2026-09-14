@@ -31,6 +31,10 @@ function NuevoIngreso() {
   const [clientesDelVehiculo, setClientesDelVehiculo] = useState([])
   const [errorBusqueda, setErrorBusqueda] = useState(null)
 
+  // --- Retrabajo (opcional): el vehículo ya tiene OT anteriores ----------
+  const [trabajosAnteriores, setTrabajosAnteriores] = useState([])
+  const [trabajoOriginalId, setTrabajoOriginalId] = useState('')
+
   // --- Vehículo nuevo (si la patente no aparece) --------------------------
   const [creandoVehiculoNuevo, setCreandoVehiculoNuevo] = useState(false)
   const [marcaNueva, setMarcaNueva] = useState('')
@@ -77,6 +81,8 @@ function NuevoIngreso() {
     setClienteId(null)
     setClienteSeleccionado(null)
     setCreandoVehiculoNuevo(false)
+    setTrabajosAnteriores([])
+    setTrabajoOriginalId('')
 
     try {
       const patenteNorm = normalizarPatenteLocal(patenteBusqueda)
@@ -108,6 +114,13 @@ function NuevoIngreso() {
           setClienteId(clientes[0].id)
           setClienteSeleccionado(clientes[0])
         }
+
+        const { data: anteriores } = await supabase
+          .from('trabajos_taller')
+          .select('id, numero_ot, fecha_ingreso')
+          .eq('vehiculo_id', data.id)
+          .order('fecha_ingreso', { ascending: false })
+        setTrabajosAnteriores(anteriores || [])
       } else {
         setCreandoVehiculoNuevo(true)
       }
@@ -261,6 +274,7 @@ function NuevoIngreso() {
           asesor_id: usuario.id,
           kilometraje_ingreso: kilometrajeNumero,
           nivel_combustible: nivelCombustible,
+          trabajo_original_id: trabajoOriginalId || null,
         })
         .select()
         .single()
@@ -570,6 +584,30 @@ function NuevoIngreso() {
               Tipo B — Servicio agendado
             </label>
           </div>
+
+          {trabajosAnteriores.length > 0 && (
+            <div className="mb-3">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                ¿Retrabajo de una OT anterior? (opcional)
+              </label>
+              <select
+                value={trabajoOriginalId}
+                onChange={(evento) => setTrabajoOriginalId(evento.target.value)}
+                className="w-full max-w-xs rounded border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">No es un retrabajo</option>
+                {trabajosAnteriores.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    OT {t.numero_ot} — {new Date(t.fecha_ingreso).toLocaleDateString('es-CL')}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-400">
+                Marca esto si el vehículo vuelve por el mismo problema que una OT anterior. Alimenta el informe de
+                calidad por técnico.
+              </p>
+            </div>
+          )}
 
           <div className="mb-3 grid grid-cols-2 gap-3">
             <div>

@@ -47,6 +47,9 @@ function Menu() {
           <NavLink to="/oportunidades" className={claseEnlace}>
             Oportunidades
           </NavLink>
+          <NavLink to="/informes" className={claseEnlace}>
+            Informes
+          </NavLink>
         </div>
       </div>
       {usuario && (
