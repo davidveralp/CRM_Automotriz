@@ -1,5 +1,62 @@
 # Registro de cambios
 
+## 2026-09-15 — Punto de venta (fuera del orden de construcción original)
+
+**Qué se entrega:** con los 10 bloques del spec original completados, el
+cliente pidió una funcionalidad nueva no contemplada en el spec: venta de
+mostrador -servicios rápidos puntuales o productos de bodega- sin pasar
+por Nuevo Ingreso ni crear una OT.
+
+### Diseño
+- Dos tipos de línea: **servicio** (texto libre + precio, sin catálogo
+  estructurado — el catálogo de 313 servicios del spec nunca se construyó
+  como tabla en ningún bloque, y agregarlo solo para esto habría sido
+  sobre-construir) y **producto** (vinculado al catálogo de Bodega del
+  Bloque 10).
+- **Reutiliza el mecanismo de `movimientos_stock` del Bloque 10** en vez de
+  inventar uno nuevo: agregar una línea de producto descuenta stock de
+  inmediato (motivo `venta`, nuevo valor agregado al `CHECK` existente);
+  quitar una línea mientras la venta sigue `abierta` repone el stock. Una
+  vez `cerrada` (cobrada), la venta queda fija — mismo criterio que una OT
+  `entregada`.
+- Sin manejo de pago real (monto recibido, vuelto, método de pago): solo
+  registra el número de documento que emite Dimasoft, igual que el cierre
+  de OT del Bloque 5.
+- Cliente opcional: una venta de mostrador no siempre necesita identificar
+  a quien compra.
+- Acceso: asesor/recepcionista/admin/socia — mismo criterio de "quien
+  atiende el mostrador" que ya se usó para `citas` (Bloque 8), no
+  `tiene_acceso_montos()` -esa protección es sobre costo/margen interno en
+  negociación de una OT, acá el precio de venta es justo lo que el
+  mostrador necesita poder escribir-.
+
+### Base de datos (`0013_punto_venta.sql`)
+- `ventas_directas` (estado abierta/cerrada/anulada) + `ventas_directas_detalle`
+  (tipo servicio/producto, `total_linea` calculado por la base).
+- Dos triggers espejo: `aplicar_venta_directa_detalle` (descuenta al
+  insertar una línea de producto) y `reponer_venta_directa_detalle`
+  (repone al borrarla). RLS solo permite borrar una línea mientras la
+  venta sigue `abierta`.
+
+### Probado de punta a punta contra producción
+Línea de servicio agregada → línea de producto agregada (stock bajó en
+vivo) → línea de producto quitada (stock repuesto) → línea de producto
+agregada de nuevo → venta cerrada con documento Dimasoft, sin cliente →
+apareció correctamente en "Ventas recientes". Los tres caminos que tocan
+`movimientos_stock` (alta, descuento por venta, reverso) quedaron
+verificados por separado.
+
+### Pendiente
+- Si se recarga la página a mitad de una venta, el carrito visible se
+  pierde -la venta queda igual `abierta` en la base, con sus líneas
+  intactas, pero no hay forma de retomarla desde la interfaz-. Limitación
+  consciente de esta primera versión, no un bug: para el volumen de un
+  mostrador de taller (una venta a la vez, se cobra en el momento) el
+  caso es raro, pero si empieza a pasar seguido conviene agregar una
+  pantalla de "ventas abiertas" para retomarlas.
+
+---
+
 ## 2026-09-14 — Bloque 10: Bodega, etapa 1
 
 **Qué se entrega:** el spec marca este bloque como "el más grande del

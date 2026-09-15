@@ -16,6 +16,7 @@ import EncuestaPublica from './pages/EncuestaPublica'
 import Agenda from './pages/Agenda'
 import Informes from './pages/Informes'
 import Bodega from './pages/Bodega'
+import PuntoVenta from './pages/PuntoVenta'
 
 function Layout({ children }) {
   return (
@@ -56,6 +57,10 @@ function App() {
           <Route
             path="/bodega"
             element={paginaProtegida(<Bodega />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller'])}
+          />
+          <Route
+            path="/punto-de-venta"
+            element={paginaProtegida(<PuntoVenta />, ['admin', 'socia', 'asesor', 'recepcionista'])}
           />
         </Routes>
       </BrowserRouter>

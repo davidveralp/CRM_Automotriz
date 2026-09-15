@@ -53,6 +53,9 @@ function Menu() {
           <NavLink to="/bodega" className={claseEnlace}>
             Bodega
           </NavLink>
+          <NavLink to="/punto-de-venta" className={claseEnlace}>
+            Punto de venta
+          </NavLink>
         </div>
       </div>
       {usuario && (
