@@ -14,6 +14,8 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { respuestaJson, respuestaPreflight } from '../_shared/cors.ts'
 import {
   CAMPOS_PERSONALIZADOS,
+  ESTADO_TARJETA_CON_CITA,
+  ESTADO_TARJETA_SIN_CITA,
   NOMBRE_CHECKLIST_POR_AREA,
   OPCIONES_TIPO_SERVICIO,
   crearChecklist,
@@ -44,7 +46,7 @@ Deno.serve(async (req) => {
     const { data: trabajoCrudo, error: errorTrabajo } = await supabase
       .from('trabajos_taller')
       .select(
-        'id, empresa_id, numero_ot, categoria_servicio, kilometraje_ingreso, clickup_task_id, clientes(nombre, apellido, razon_social, telefono), vehiculos(patente, marca, modelo), inspecciones_ingreso(observaciones)'
+        'id, empresa_id, numero_ot, categoria_servicio, kilometraje_ingreso, clickup_task_id, cita_id, clientes(nombre, apellido, razon_social, telefono), vehiculos(patente, marca, modelo, kilometraje), inspecciones_ingreso(observaciones)'
       )
       .eq('id', trabajoId)
       .maybeSingle()
@@ -63,8 +65,9 @@ Deno.serve(async (req) => {
       categoria_servicio: string | null
       kilometraje_ingreso: number | null
       clickup_task_id: string | null
+      cita_id: string | null
       clientes: { nombre: string; apellido: string | null; razon_social: string | null; telefono: string | null } | { nombre: string; apellido: string | null; razon_social: string | null; telefono: string | null }[] | null
-      vehiculos: { patente: string; marca: string; modelo: string } | { patente: string; marca: string; modelo: string }[] | null
+      vehiculos: { patente: string; marca: string; modelo: string; kilometraje: number | null } | { patente: string; marca: string; modelo: string; kilometraje: number | null }[] | null
       inspecciones_ingreso: { observaciones: string | null } | { observaciones: string | null }[] | null
     }
     const trabajo = trabajoCrudo as unknown as TrabajoConRelaciones
@@ -105,7 +108,11 @@ Deno.serve(async (req) => {
     let clickupTaskId = trabajo.clickup_task_id as string | null
     if (!clickupTaskId) {
       try {
-        const tarea = (await crearTarea(config.lista_trabajos_id, { name: nombreTarjeta })) as { id: string }
+        const estadoInicial = trabajo.cita_id ? ESTADO_TARJETA_CON_CITA : ESTADO_TARJETA_SIN_CITA
+        const tarea = (await crearTarea(config.lista_trabajos_id, {
+          name: nombreTarjeta,
+          status: estadoInicial,
+        })) as { id: string }
         clickupTaskId = tarea.id
         await supabase.from('trabajos_taller').update({ clickup_task_id: clickupTaskId }).eq('id', trabajoId)
       } catch (error) {
@@ -120,8 +127,12 @@ Deno.serve(async (req) => {
         [CAMPOS_PERSONALIZADOS.patente, vehiculo?.patente ?? ''],
         [CAMPOS_PERSONALIZADOS.datosCliente, `${nombreCliente} · ${cliente?.telefono ?? 'sin teléfono'}`],
       ]
-      if (trabajo.kilometraje_ingreso != null) {
-        camposAFijar.push([CAMPOS_PERSONALIZADOS.kilometraje, trabajo.kilometraje_ingreso])
+      // Preferir el kilometraje capturado en ESTE ingreso; si no se
+      // registró (queda vacío en el formulario), usar el último conocido
+      // del vehículo en vez de dejar el campo sin nada en ClickUp.
+      const kilometrajeAReportar = trabajo.kilometraje_ingreso ?? vehiculo?.kilometraje ?? null
+      if (kilometrajeAReportar != null) {
+        camposAFijar.push([CAMPOS_PERSONALIZADOS.kilometraje, kilometrajeAReportar])
       }
       if (inspeccion?.observaciones) {
         camposAFijar.push([CAMPOS_PERSONALIZADOS.observaciones, inspeccion.observaciones])
@@ -200,20 +211,34 @@ Deno.serve(async (req) => {
         }
         let checklist = tareaClickUp.checklists.find((c) => c.name === NOMBRE_CHECKLIST_POR_AREA[area])
         if (!checklist) {
-          checklist = (await crearChecklist(clickupTaskId!, NOMBRE_CHECKLIST_POR_AREA[area])) as {
-            id: string
-            name: string
+          // Igual que crearItemChecklist: POST /task/{id}/checklist también
+          // devuelve { checklist: {...} }, no el checklist suelto en la raíz.
+          const respuestaCrearChecklist = (await crearChecklist(clickupTaskId!, NOMBRE_CHECKLIST_POR_AREA[area])) as {
+            checklist: { id: string; name: string }
           }
+          checklist = respuestaCrearChecklist.checklist
         }
 
         for (const item of itemsPendientes) {
           try {
             const usuarioResponsable = Array.isArray(item.usuarios) ? item.usuarios[0] : item.usuarios
             const miembro = encontrarPorCorreo(miembros, usuarioResponsable?.correo ?? null)
-            const nuevoItem = (await crearItemChecklist(checklist.id, item.detalle, miembro?.id ?? null)) as {
-              id: string
+            // POST /checklist/{id}/checklist_item devuelve el CHECKLIST
+            // completo (con todos sus items), no el item recién creado
+            // suelto -no hay `id` en la raíz de la respuesta-. Hay que
+            // buscarlo por nombre dentro de checklist.items; se toma el
+            // último match porque, si el nombre se repite, el que acabamos
+            // de crear es el más reciente.
+            const respuestaCrear = (await crearItemChecklist(checklist.id, item.detalle, miembro?.id ?? null)) as {
+              checklist: { items: { id: string; name: string }[] }
             }
-            await supabase.from('ot_detalle').update({ clickup_checklist_item_id: nuevoItem.id }).eq('id', item.id)
+            const itemCreado = [...(respuestaCrear.checklist?.items ?? [])]
+              .reverse()
+              .find((i) => i.name === item.detalle)
+            if (!itemCreado) {
+              throw new Error('ClickUp no devolvió el ítem recién creado en la respuesta del checklist.')
+            }
+            await supabase.from('ot_detalle').update({ clickup_checklist_item_id: itemCreado.id }).eq('id', item.id)
             itemsSincronizados++
           } catch (error) {
             await registrarError(`ot_detalle:${item.id}`, error)

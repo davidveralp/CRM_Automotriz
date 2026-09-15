@@ -14,6 +14,16 @@ function nombreVisible(cliente) {
   return [cliente.nombre, cliente.apellido].filter(Boolean).join(' ')
 }
 
+// citas.fecha es un `date` sin hora ("2026-09-15"): parsearlo con `new
+// Date()` lo interpreta como medianoche UTC y `toLocaleDateString` lo
+// muestra un día antes en cualquier huso con offset negativo (Chile
+// incluido). Reformatea el string directo, sin pasar por Date.
+function formatoFechaCorto(fechaIso) {
+  if (!fechaIso) return ''
+  const [anio, mes, dia] = fechaIso.split('-')
+  return `${dia}-${mes}-${anio}`
+}
+
 const PREGUNTAS_DESCUBRIMIENTO = [
   { clave: 'sintoma', etiqueta: '¿Qué nota que le pasa al vehículo?' },
   { clave: 'desde_cuando', etiqueta: '¿Desde cuándo lo nota?' },
@@ -34,6 +44,10 @@ function NuevoIngreso() {
   // --- Retrabajo (opcional): el vehículo ya tiene OT anteriores ----------
   const [trabajosAnteriores, setTrabajosAnteriores] = useState([])
   const [trabajoOriginalId, setTrabajoOriginalId] = useState('')
+
+  // --- Cita agendada (opcional): de acá sale el estado inicial en ClickUp -
+  const [citasAbiertas, setCitasAbiertas] = useState([])
+  const [citaId, setCitaId] = useState('')
 
   // --- Vehículo nuevo (si la patente no aparece) --------------------------
   const [creandoVehiculoNuevo, setCreandoVehiculoNuevo] = useState(false)
@@ -71,6 +85,22 @@ function NuevoIngreso() {
   const [error, setError] = useState(null)
   const [otCreada, setOtCreada] = useState(null)
 
+  async function cargarCitasAbiertas(idCliente) {
+    try {
+      const { data } = await supabase
+        .from('citas')
+        .select('id, fecha, hora, descripcion')
+        .eq('cliente_id', idCliente)
+        .in('estado', ['agendada', 'confirmada'])
+        .is('trabajo_id', null)
+        .order('fecha', { ascending: false })
+      setCitasAbiertas(data || [])
+    } catch {
+      // Ayuda para preseleccionar la cita, no un paso obligatorio: si falla
+      // la conexión, el asesor sigue sin marcar ninguna.
+    }
+  }
+
   async function buscarVehiculo(evento) {
     evento.preventDefault()
     setBuscando(true)
@@ -83,6 +113,8 @@ function NuevoIngreso() {
     setCreandoVehiculoNuevo(false)
     setTrabajosAnteriores([])
     setTrabajoOriginalId('')
+    setCitasAbiertas([])
+    setCitaId('')
 
     try {
       const patenteNorm = normalizarPatenteLocal(patenteBusqueda)
@@ -113,6 +145,7 @@ function NuevoIngreso() {
         if (clientes.length === 1) {
           setClienteId(clientes[0].id)
           setClienteSeleccionado(clientes[0])
+          await cargarCitasAbiertas(clientes[0].id)
         }
 
         const { data: anteriores } = await supabase
@@ -165,11 +198,13 @@ function NuevoIngreso() {
     }
   }
 
-  function elegirCliente(cliente) {
+  async function elegirCliente(cliente) {
     setClienteId(cliente.id)
     setClienteSeleccionado(cliente)
     setResultadosCliente([])
     setCreandoClienteNuevo(false)
+    setCitaId('')
+    await cargarCitasAbiertas(cliente.id)
   }
 
   async function revisarDuplicadosClienteNuevo() {
@@ -275,6 +310,7 @@ function NuevoIngreso() {
           kilometraje_ingreso: kilometrajeNumero,
           nivel_combustible: nivelCombustible,
           trabajo_original_id: trabajoOriginalId || null,
+          cita_id: citaId || null,
         })
         .select()
         .single()
@@ -282,6 +318,10 @@ function NuevoIngreso() {
       if (errorTrabajo) {
         setError(errorTrabajo.message)
         return
+      }
+
+      if (citaId) {
+        await supabase.from('citas').update({ estado: 'completada', trabajo_id: trabajo.id }).eq('id', citaId)
       }
 
       const { error: errorInspeccion } = await supabase.from('inspecciones_ingreso').insert({
@@ -584,6 +624,31 @@ function NuevoIngreso() {
               Tipo B — Servicio agendado
             </label>
           </div>
+
+          {citasAbiertas.length > 0 && (
+            <div className="mb-3">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                ¿Viene de una cita agendada? (opcional)
+              </label>
+              <select
+                value={citaId}
+                onChange={(evento) => setCitaId(evento.target.value)}
+                className="w-full max-w-xs rounded border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">Sin cita, ingreso directo</option>
+                {citasAbiertas.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {formatoFechaCorto(c.fecha)}
+                    {c.hora ? ` ${c.hora}` : ''} {c.descripcion ? `— ${c.descripcion}` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-400">
+                Marca esto si el cliente había reservado hora en Agenda. Define el estado con el que nace la tarjeta
+                en ClickUp.
+              </p>
+            </div>
+          )}
 
           {trabajosAnteriores.length > 0 && (
             <div className="mb-3">

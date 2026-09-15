@@ -1,5 +1,85 @@
 # Registro de cambios
 
+## 2026-09-15 — Primera prueba real de la sincronización con ClickUp
+
+**Qué se entrega:** el botón "Sincronizar con ClickUp" nunca se había
+probado en vivo (documentado como pendiente desde el Bloque 4, a propósito,
+para no escribir en el ClickUp de producción sin permiso explícito). El
+cliente pidió probarlo hoy, en ambas direcciones (CRM→ClickUp y
+ClickUp→CRM revisando la tarjeta real). Aparecieron y se corrigieron
+varios bugs reales de primera ejecución.
+
+### Bugs reales encontrados y corregidos
+1. **`obtenerMiembrosEquipo()` llamaba a un endpoint que no existe.**
+   `GET /team/{team_id}` no es parte de la API de ClickUp v2 -solo existe
+   `GET /team` (sin id), que lista todos los workspaces autorizados-. La
+   llamada devolvía un cuerpo sin `.teams`, y `datos.teams[0]` explotaba
+   con "Cannot read properties of undefined". Se corrigió trayendo la
+   lista completa y filtrando por `CLICKUP_TEAM_ID`.
+2. **`crearItemChecklist()` y `crearChecklist()` asumían la forma de
+   respuesta equivocada.** Ambos endpoints de "crear" de ClickUp devuelven
+   el objeto contenedor completo (`{ checklist: {...} }`), no el recurso
+   recién creado suelto en la raíz. El síntoma real fue silencioso y
+   peligroso: el `UPDATE` a `ot_detalle`/`clickup_checklist_item_id` recibía
+   `undefined`, supabase-js lo omitía del payload, la fila nunca quedaba
+   vinculada, pero el contador `itemsSincronizados` igual se incrementaba
+   -el mensaje decía "sincronizado" cuando en la base seguía sin
+   vincularse-. Se corrigió leyendo `respuesta.checklist` (y, para el ítem,
+   buscándolo por nombre dentro de `checklist.items`, porque ese endpoint
+   no devuelve el id del ítem nuevo en ningún otro lado).
+3. **Nombres de los tres checklists corregidos** por el cliente revisando
+   la tarjeta real: `Repuestos` / `Lubricantes e insumos` / `Servicios
+   Rápidos` (no las mayúsculas ni el "SERVICIO EXTERNO" asumidos al
+   inspeccionar el workspace en el Bloque 4).
+4. **Kilometraje con respaldo:** el campo personalizado de ClickUp solo se
+   llenaba si el kilometraje se había capturado en ESE ingreso puntual.
+   Ahora usa `vehiculos.kilometraje` (el último conocido) como respaldo
+   cuando el ingreso no lo registró.
+
+### Estado inicial de la tarjeta según el origen (requisito nuevo del cliente)
+El cliente pidió que la tarjeta nazca en un estado distinto según si el
+vehículo entró por una cita agendada (`agenda`) o como ingreso directo sin
+cita (`POR DESIGNAR`, texto exacto confirmado por el cliente). Esto
+requirió cerrar una pieza que había quedado pendiente desde el Bloque 8:
+
+- **`trabajos_taller.cita_id`** (migración `0014_ingreso_desde_cita.sql`):
+  `NuevoIngreso.jsx` ahora ofrece un selector "¿Viene de una cita
+  agendada?" cuando el cliente tiene citas abiertas sin vincular, y al
+  registrar el ingreso marca esa cita como `completada` y le setea su
+  `trabajo_id` -mismo patrón ya usado para "retrabajo"-. De ahí sale el
+  estado con el que `clickup-sincronizar` crea la tarjeta.
+- **Bug real de PostgREST encontrado al probar esto mismo:** agregar
+  `trabajos_taller.cita_id` creó una SEGUNDA relación entre `citas` y
+  `trabajos_taller` (la inversa de `citas.trabajo_id` que ya existía).
+  `Agenda.jsx` embebía `trabajos_taller(numero_ot)` sin ambigüedad hasta
+  ahora; con dos relaciones, PostgREST ya no puede adivinar cuál usar y
+  falla con "more than one relationship was found". Se corrigió nombrando
+  la restricción a mano: `trabajos_taller!citas_trabajo_id_fkey(...)`.
+  **Cualquier columna nueva que cree una segunda FK entre dos tablas ya
+  embebidas en otra consulta rompe esa consulta -revisar antes de agregar
+  una FK "de vuelta" entre tablas que ya se relacionan de otra forma.**
+- **Bug real de zona horaria encontrado en el mismo selector:** la fecha
+  de la cita se mostraba un día antes (`new Date("2026-09-15")` se
+  interpreta como medianoche UTC, y `toLocaleDateString` la muestra un día
+  antes en cualquier huso horario negativo, Chile incluido). Se corrigió
+  formateando el string `YYYY-MM-DD` directo, sin pasar por `Date`.
+
+### Probado de punta a punta contra producción (ClickUp real)
+Cliente + vehículo de prueba → OT sin cita (14007): tarjeta creada, mano de
+obra y repuesto sincronizados, confirmado con el cliente que nació en
+**POR DESIGNAR** → cita agendada + segunda OT del mismo cliente/vehículo
+(14008) vinculada a esa cita: tarjeta creada, confirmado que nació en
+**agenda**. Ambos estados verificados visualmente por el cliente en el
+tablero real.
+
+### Pendiente
+- Solo se probó la dirección CRM→ClickUp a fondo; la dirección
+  ClickUp→CRM (webhook) no se volvió a ejercitar en esta sesión más allá
+  de confirmar visualmente el estado de las tarjetas -sigue pendiente una
+  prueba real de "cambiar algo en ClickUp y ver que el CRM lo refleje".
+
+---
+
 ## 2026-09-15 — Punto de venta (fuera del orden de construcción original)
 
 **Qué se entrega:** con los 10 bloques del spec original completados, el

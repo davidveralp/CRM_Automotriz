@@ -82,7 +82,12 @@ function Agenda() {
         supabase
           .from('citas')
           .select(
-            'id, tipo_isla_id, fecha, hora, duracion_estimada_minutos, descripcion, estado, clientes(id, tipo, nombre, apellido, razon_social, telefono), vehiculos(id, patente, marca, modelo), trabajo_id, trabajos_taller(numero_ot)'
+            // trabajos_taller!citas_trabajo_id_fkey: desde el Bloque "ingreso
+            // desde cita" (2026-09-15) trabajos_taller.cita_id agregó una
+            // SEGUNDA relación entre estas dos tablas (la inversa de
+            // citas.trabajo_id). PostgREST ya no puede adivinar sola cuál
+            // usar para el embed -hay que nombrar la restricción a mano-.
+            'id, tipo_isla_id, fecha, hora, duracion_estimada_minutos, descripcion, estado, clientes(id, tipo, nombre, apellido, razon_social, telefono), vehiculos(id, patente, marca, modelo), trabajo_id, trabajos_taller!citas_trabajo_id_fkey(numero_ot)'
           )
           .eq('fecha', fecha)
           .order('hora', { nullsFirst: true }),

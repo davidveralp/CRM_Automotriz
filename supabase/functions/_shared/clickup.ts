@@ -26,12 +26,23 @@ export const OPCIONES_TIPO_SERVICIO: Record<string, string> = {
   dyp: '861d5027-3d4b-4427-b5fa-110e44d8e939', // "DyP"
 }
 
+// Estado con el que nace la tarjeta según el origen del ingreso, confirmado
+// por el cliente el 2026-09-15: "agenda" si el vehículo venía de una cita
+// (trabajos_taller.cita_id no nulo), "POR DESIGNAR" si entró directo sin
+// cita. Sin esto, ClickUp aplica el default de la lista, que no distingue
+// el origen.
+export const ESTADO_TARJETA_CON_CITA = 'agenda'
+export const ESTADO_TARJETA_SIN_CITA = 'POR DESIGNAR'
+
 // Nombres de los tres checklists de "lista de control" (spec §7). El orden
 // importa poco; el nombre debe calzar exacto con lo que ya usa el equipo.
+// Confirmados por el cliente revisando la tarjeta real de prueba
+// (2026-09-15): no son los que se habían asumido al inspeccionar el
+// workspace en el Bloque 4.
 export const NOMBRE_CHECKLIST_POR_AREA: Record<string, string> = {
-  repuestos: 'REPUESTOS',
-  lubricantes_insumos: 'LUBRICANTES E INSUMOS',
-  servicios_externos: 'SERVICIO EXTERNO',
+  repuestos: 'Repuestos',
+  lubricantes_insumos: 'Lubricantes e insumos',
+  servicios_externos: 'Servicios Rápidos',
 }
 
 export class ErrorClickUp extends Error {
@@ -81,10 +92,16 @@ export interface MiembroClickUp {
 }
 
 export async function obtenerMiembrosEquipo(): Promise<MiembroClickUp[]> {
-  const datos = (await clickupFetch(`/team/${CLICKUP_TEAM_ID}`)) as {
-    teams: { members: { user: MiembroClickUp }[] }[]
+  // No existe un GET /team/{team_id} que devuelva un solo equipo: la API
+  // solo tiene "Get Authorized Teams" (GET /team, sin id), que lista TODOS
+  // los workspaces a los que el token tiene acceso. Hay que traer la lista
+  // completa y filtrar por CLICKUP_TEAM_ID -llamar con el id en la ruta
+  // devolvía un cuerpo sin `.teams`, y `datos.teams[0]` reventaba con
+  // "Cannot read properties of undefined".
+  const datos = (await clickupFetch('/team')) as {
+    teams: { id: string; members: { user: MiembroClickUp }[] }[]
   }
-  const equipo = datos.teams[0]
+  const equipo = datos.teams?.find((t) => t.id === CLICKUP_TEAM_ID)
   return equipo ? equipo.members.map((m) => m.user) : []
 }
 
