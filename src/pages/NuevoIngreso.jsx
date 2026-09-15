@@ -55,6 +55,14 @@ function NuevoIngreso() {
   const [modeloNuevo, setModeloNuevo] = useState('')
   const [anioNuevo, setAnioNuevo] = useState('')
 
+  // --- Datos del vehículo para la Orden de Trabajo impresa (existente o
+  // nuevo: se completan/corrigen en cada ingreso si faltan) ----------------
+  const [colorVehiculo, setColorVehiculo] = useState('')
+  const [vinVehiculo, setVinVehiculo] = useState('')
+  const [puertasVehiculo, setPuertasVehiculo] = useState('')
+  const [aseguradoraVehiculo, setAseguradoraVehiculo] = useState('')
+  const [propietarioVehiculo, setPropietarioVehiculo] = useState(null)
+
   // --- Cliente ------------------------------------------------------------
   const [clienteId, setClienteId] = useState(null)
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null)
@@ -72,12 +80,15 @@ function NuevoIngreso() {
   const [tipoIngreso, setTipoIngreso] = useState('diagnostico')
   const [kilometraje, setKilometraje] = useState('')
   const [nivelCombustible, setNivelCombustible] = useState('1/2')
+  const [clienteSolicita, setClienteSolicita] = useState('')
   const [danosVisibles, setDanosVisibles] = useState('')
   const [accesorios, setAccesorios] = useState('')
   const [observaciones, setObservaciones] = useState('')
   const [respuestasDescubrimiento, setRespuestasDescubrimiento] = useState({})
   const [firmaPng, setFirmaPng] = useState(null)
   const [firmadoPor, setFirmadoPor] = useState('')
+  const [firmadoCelular, setFirmadoCelular] = useState('')
+  const [rolPersonaPresente, setRolPersonaPresente] = useState('dueno')
   const [avisoKilometraje, setAvisoKilometraje] = useState(null)
 
   // --- Envío / resultado ----------------------------------------------------
@@ -115,12 +126,17 @@ function NuevoIngreso() {
     setTrabajoOriginalId('')
     setCitasAbiertas([])
     setCitaId('')
+    setColorVehiculo('')
+    setVinVehiculo('')
+    setPuertasVehiculo('')
+    setAseguradoraVehiculo('')
+    setPropietarioVehiculo(null)
 
     try {
       const patenteNorm = normalizarPatenteLocal(patenteBusqueda)
       const { data, error: errorConsulta } = await supabase
         .from('vehiculos')
-        .select('id, patente, marca, modelo, anio, kilometraje')
+        .select('id, patente, marca, modelo, anio, kilometraje, color, vin, puertas, aseguradora')
         .eq('patente_norm', patenteNorm)
         .is('eliminado_en', null)
         .maybeSingle()
@@ -132,9 +148,13 @@ function NuevoIngreso() {
 
       if (data) {
         setVehiculo(data)
+        setColorVehiculo(data.color || '')
+        setVinVehiculo(data.vin || '')
+        setPuertasVehiculo(data.puertas || '')
+        setAseguradoraVehiculo(data.aseguradora || '')
         const { data: vinculos, error: errorVinculos } = await supabase
           .from('clientes_vehiculos')
-          .select('clientes(id, tipo, nombre, apellido, razon_social)')
+          .select('es_propietario, clientes(id, tipo, nombre, apellido, razon_social, rut, telefono, email, direccion)')
           .eq('vehiculo_id', data.id)
         if (errorVinculos) {
           setErrorBusqueda(errorVinculos.message)
@@ -142,6 +162,7 @@ function NuevoIngreso() {
         }
         const clientes = (vinculos || []).map((v) => v.clientes)
         setClientesDelVehiculo(clientes)
+        setPropietarioVehiculo((vinculos || []).find((v) => v.es_propietario)?.clientes || null)
         if (clientes.length === 1) {
           setClienteId(clientes[0].id)
           setClienteSeleccionado(clientes[0])
@@ -174,7 +195,7 @@ function NuevoIngreso() {
       const soloDigitos = termino.replace(/\D/g, '')
       let consulta = supabase
         .from('clientes')
-        .select('id, tipo, nombre, apellido, razon_social, rut, telefono')
+        .select('id, tipo, nombre, apellido, razon_social, rut, telefono, email, direccion')
         .is('eliminado_en', null)
         .limit(10)
 
@@ -274,6 +295,10 @@ function NuevoIngreso() {
             marca: marcaNueva,
             modelo: modeloNuevo,
             anio: anioNuevo ? Number(anioNuevo) : null,
+            color: colorVehiculo || null,
+            vin: vinVehiculo || null,
+            puertas: puertasVehiculo ? Number(puertasVehiculo) : null,
+            aseguradora: aseguradoraVehiculo || null,
           })
           .select()
           .single()
@@ -326,18 +351,37 @@ function NuevoIngreso() {
 
       const { error: errorInspeccion } = await supabase.from('inspecciones_ingreso').insert({
         trabajo_id: trabajo.id,
+        cliente_solicita: clienteSolicita || null,
         danos_visibles: danosVisibles || null,
         accesorios: accesorios || null,
         observaciones: observaciones || null,
         preguntas_descubrimiento: tipoIngreso === 'diagnostico' ? respuestasDescubrimiento : null,
         firma_png: firmaPng,
         firmado_por: firmadoPor || nombreVisible(clienteSeleccionado),
+        firmado_celular: firmadoCelular || null,
+        rol_persona_presente: rolPersonaPresente || null,
         firmado_en: firmaPng ? new Date().toISOString() : null,
       })
 
       if (errorInspeccion) {
         setError(errorInspeccion.message)
         return
+      }
+
+      // Si el vehículo ya existía, los campos de color/chasis/puertas/
+      // aseguradora se completan u corrigen en este mismo ingreso -son
+      // datos que antes no se pedían y muchos vehículos van a llegar sin
+      // ellos-. Si era nuevo, ya se guardaron en el insert de arriba.
+      if (vehiculo) {
+        await supabase
+          .from('vehiculos')
+          .update({
+            color: colorVehiculo || null,
+            vin: vinVehiculo || null,
+            puertas: puertasVehiculo ? Number(puertasVehiculo) : null,
+            aseguradora: aseguradoraVehiculo || null,
+          })
+          .eq('id', vehiculoId)
       }
 
       if (kilometrajeNumero !== null) {
@@ -359,6 +403,14 @@ function NuevoIngreso() {
 
   // --- Confirmación / documento imprimible ---------------------------------
   if (otCreada) {
+    const fechaOt = new Date(otCreada.fecha_ingreso)
+    const fechaFormateada = `${String(fechaOt.getDate()).padStart(2, '0')}-${String(fechaOt.getMonth() + 1).padStart(2, '0')}-${fechaOt.getFullYear()}`
+    const marcaImpresa = vehiculo ? vehiculo.marca : marcaNueva
+    const modeloImpreso = vehiculo ? vehiculo.modelo : modeloNuevo
+    const anioImpreso = vehiculo ? vehiculo.anio : anioNuevo
+    const nombreDueno = propietarioVehiculo ? nombreVisible(propietarioVehiculo) : nombreVisible(clienteSeleccionado)
+    const empresa = usuario?.empresas
+
     return (
       <div className="p-6">
         <div className="mb-4 rounded border border-green-300 bg-green-50 p-4 text-green-900 print:hidden">
@@ -388,25 +440,90 @@ function NuevoIngreso() {
           </div>
         </div>
 
-        <div className="max-w-2xl rounded border border-slate-200 bg-white p-6">
-          <h1 className="mb-1 text-xl font-semibold text-slate-900">Comprobante de ingreso</h1>
-          <p className="mb-4 text-sm text-slate-500">OT {otCreada.numero_ot} · {new Date(otCreada.fecha_ingreso).toLocaleString('es-CL')}</p>
+        <div className="max-w-3xl rounded border border-slate-200 bg-white p-6 text-sm text-slate-900 print:border-0 print:p-0">
+          <div className="mb-2 flex items-start justify-between border-b border-slate-800 pb-2">
+            <div>
+              <p className="font-bold uppercase">{empresa?.nombre}</p>
+              <p>{empresa?.direccion}</p>
+              <p>{empresa?.correo}</p>
+              <p>{empresa?.telefono}</p>
+            </div>
+            <div className="text-right">
+              <p className="font-bold">ORDEN DE TRABAJO N° {otCreada.numero_ot}</p>
+              <p className="font-bold">FECHA: {fechaFormateada}</p>
+              <p className="mt-1 text-xs">Página: 1</p>
+            </div>
+          </div>
 
-          <p><span className="font-medium">Cliente:</span> {nombreVisible(clienteSeleccionado)}</p>
-          <p><span className="font-medium">Vehículo:</span> {patenteBusqueda.toUpperCase()} — {vehiculo ? `${vehiculo.marca} ${vehiculo.modelo}` : `${marcaNueva} ${modeloNuevo}`}</p>
-          <p><span className="font-medium">Tipo de ingreso:</span> {tipoIngreso === 'diagnostico' ? 'Diagnóstico' : 'Servicio agendado'}</p>
-          <p><span className="font-medium">Kilometraje:</span> {kilometraje || 'no registrado'}</p>
-          <p><span className="font-medium">Combustible:</span> {nivelCombustible}</p>
-          {danosVisibles && <p className="mt-2"><span className="font-medium">Daños visibles:</span> {danosVisibles}</p>}
-          {accesorios && <p><span className="font-medium">Accesorios:</span> {accesorios}</p>}
-          {observaciones && <p><span className="font-medium">Observaciones:</span> {observaciones}</p>}
+          <div className="mb-3 grid grid-cols-2 gap-x-6 border-b border-slate-300 pb-3">
+            <div className="space-y-0.5">
+              <p>Nombre Cliente: {nombreVisible(clienteSeleccionado)}</p>
+              <p>Dirección: {clienteSeleccionado?.direccion || ''}</p>
+              <p>
+                email: {clienteSeleccionado?.email || ''} &nbsp;&nbsp; Fonos: {clienteSeleccionado?.telefono || ''}
+              </p>
+              <p>
+                Marca: {marcaImpresa} &nbsp;&nbsp; Modelo: {modeloImpreso}
+              </p>
+              <p>
+                Chasis: {vinVehiculo || ''} &nbsp;&nbsp; Puertas: {puertasVehiculo || ''}
+              </p>
+              <p>Cía. Aseguradora: {aseguradoraVehiculo || ''}</p>
+            </div>
+            <div className="space-y-0.5">
+              <p>R.U.T.: {clienteSeleccionado?.rut || ''}</p>
+              <p>Dueño Vehículo: {nombreDueno}</p>
+              <p>
+                Color: {colorVehiculo || ''} &nbsp;&nbsp; Año: {anioImpreso || ''}
+              </p>
+              <p>
+                Kilometraje: {kilometraje || ''} &nbsp;&nbsp; Patente: {patenteBusqueda.toUpperCase()}
+              </p>
+            </div>
+          </div>
+
+          <div className="mb-3 border-b border-slate-300 pb-3">
+            <p className="font-bold">Cliente Solicita:</p>
+            <p className="whitespace-pre-line">{clienteSolicita || '—'}</p>
+          </div>
+
+          <div className="mb-3 border-b border-slate-300 pb-3 text-xs">
+            <p className="mb-1 font-bold">POLITICAS DE SERVICIO</p>
+            <p className="mb-1">
+              1) CLIENTE: Autorizo a Servicio Automotriz DIDIAL Ltda. Para efectuar trabajos indicados en esta orden
+              de ingreso y en presupuesto efectuado. También autorizo la movilización del vehículo por calles y
+              carretera con el fin de efectuar pruebas pertinentes.
+            </p>
+            <p>
+              2) EMPRESA: La entidad solo se hace responsable por el servicio prestado conforme a la petición del
+              cliente, NO por desperfectos ajenos al trabajo efectuado, ya sea por cumplimiento de la vida útil de
+              las piezas del mismo vehículo o por el uso dado por el cliente.
+            </p>
+          </div>
+
+          <div className="mb-3 grid grid-cols-3 gap-4 text-xs">
+            <div>
+              <p>{firmadoPor || nombreVisible(clienteSeleccionado)}</p>
+              <p className="border-t border-slate-800 pt-0.5">NOMBRE Y APELLIDO</p>
+            </div>
+            <div>
+              <p>{firmadoCelular || ''}</p>
+              <p className="border-t border-slate-800 pt-0.5">N° DE CELULAR</p>
+            </div>
+            <div>
+              <p>{rolPersonaPresente === 'conductor' ? 'Conductor' : 'Dueño'}</p>
+              <p className="border-t border-slate-800 pt-0.5">¿ERES DUEÑO O CONDUCTOR?</p>
+            </div>
+          </div>
 
           {firmaPng && (
-            <div className="mt-4">
-              <p className="mb-1 text-sm font-medium text-slate-700">Firma de {firmadoPor || nombreVisible(clienteSeleccionado)}</p>
-              <img src={firmaPng} alt="Firma del cliente" className="max-w-xs rounded border border-slate-200" />
+            <div className="mb-1 flex justify-center">
+              <img src={firmaPng} alt="Firma del cliente" className="max-h-24" />
             </div>
           )}
+          <p className="border-t border-dashed border-slate-400 pt-1 text-center text-xs">FIRMA CLIENTE INGRESO</p>
+
+          <p className="mt-4 text-right font-bold">TOTAL: 0</p>
         </div>
       </div>
     )
@@ -606,6 +723,47 @@ function NuevoIngreso() {
             Ingresando a <span className="font-medium">{nombreVisible(clienteSeleccionado)}</span>
           </p>
 
+          <div className="mb-4 rounded border border-slate-200 p-3">
+            <p className="mb-2 text-sm font-medium text-slate-700">
+              Datos del vehículo para la Orden de Trabajo {vehiculo && '(completa lo que falte)'}
+            </p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Color</label>
+                <input
+                  value={colorVehiculo}
+                  onChange={(evento) => setColorVehiculo(evento.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Chasis / VIN</label>
+                <input
+                  value={vinVehiculo}
+                  onChange={(evento) => setVinVehiculo(evento.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">N° de puertas</label>
+                <input
+                  type="number"
+                  value={puertasVehiculo}
+                  onChange={(evento) => setPuertasVehiculo(evento.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Cía. aseguradora</label>
+                <input
+                  value={aseguradoraVehiculo}
+                  onChange={(evento) => setAseguradoraVehiculo(evento.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="mb-4 flex gap-4 text-sm">
             <label className="flex items-center gap-2">
               <input
@@ -701,6 +859,17 @@ function NuevoIngreso() {
           </div>
 
           <div className="mb-3">
+            <label className="mb-1 block text-sm font-medium text-slate-700">Cliente solicita</label>
+            <textarea
+              value={clienteSolicita}
+              onChange={(evento) => setClienteSolicita(evento.target.value)}
+              rows={3}
+              placeholder="Lo que el cliente pide revisar o reparar, tal como lo dice"
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="mb-3">
             <label className="mb-1 block text-sm font-medium text-slate-700">Daños visibles</label>
             <textarea
               value={danosVisibles}
@@ -750,12 +919,28 @@ function NuevoIngreso() {
 
           <div className="mb-4">
             <label className="mb-1 block text-sm font-medium text-slate-700">Firma de conformidad</label>
-            <input
-              placeholder="Nombre de quien firma"
-              value={firmadoPor}
-              onChange={(evento) => setFirmadoPor(evento.target.value)}
-              className="mb-2 w-full max-w-xs rounded border border-slate-300 px-3 py-2 text-sm"
-            />
+            <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <input
+                placeholder="Nombre de quien firma"
+                value={firmadoPor}
+                onChange={(evento) => setFirmadoPor(evento.target.value)}
+                className="rounded border border-slate-300 px-3 py-2 text-sm"
+              />
+              <input
+                placeholder="N° de celular"
+                value={firmadoCelular}
+                onChange={(evento) => setFirmadoCelular(evento.target.value)}
+                className="rounded border border-slate-300 px-3 py-2 text-sm"
+              />
+              <select
+                value={rolPersonaPresente}
+                onChange={(evento) => setRolPersonaPresente(evento.target.value)}
+                className="rounded border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="dueno">Es dueño</option>
+                <option value="conductor">Es conductor</option>
+              </select>
+            </div>
             <FirmaCanvas onCambio={setFirmaPng} />
           </div>
 

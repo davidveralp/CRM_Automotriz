@@ -17,6 +17,7 @@ import EncuestaPublica from './pages/EncuestaPublica'
 import Agenda from './pages/Agenda'
 import Informes from './pages/Informes'
 import Bodega from './pages/Bodega'
+import TallerIslas from './pages/TallerIslas'
 import PuntoVenta from './pages/PuntoVenta'
 
 function Layout({ children }) {
@@ -55,6 +56,10 @@ function App() {
           <Route path="/trabajos/:id/radar" element={paginaProtegida(<RadarSesion />)} />
           <Route path="/oportunidades" element={paginaProtegida(<Oportunidades />)} />
           <Route path="/agenda" element={paginaProtegida(<Agenda />)} />
+          <Route
+            path="/taller"
+            element={paginaProtegida(<TallerIslas />, ['admin', 'socia', 'jefe_taller'])}
+          />
           <Route path="/informes" element={paginaProtegida(<Informes />, ['admin', 'socia'])} />
           <Route
             path="/bodega"

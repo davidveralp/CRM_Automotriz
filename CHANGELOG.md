@@ -1,5 +1,28 @@
 # Registro de cambios
 
+## 2026-09-15 — Taller por islas, formato real de Orden de Trabajo, y prueba de proceso completo
+
+**Qué se entrega:** tres pedidos seguidos del cliente, todos probados en vivo contra producción (ClickUp y Brevo reales).
+
+### Taller por islas (`0017_taller_islas.sql`)
+Con la sincronización por tarea ya funcionando, el cliente pidió una vista que imite el taller físico: qué mecánico está haciendo qué, agrupado por isla (no por estado de OT, que ya muestra ClickUp), para ver carga de trabajo y tiempo real por vehículo.
+- `usuarios_islas`: qué isla(s) cubre cada técnico, tabla configurable desde la pantalla nueva (`/taller`, admin/socia/jefe_taller) — un técnico puede cubrir más de una (caso real: Pablo Donoso, alineación y compras).
+- `trabajos_taller.estado_cambiado_en`: cuánto lleva la OT en su etapa actual (`clickup_estado_actual`), actualizado solo en la transición real de ese campo vía trigger — no con `tareas_taller.estado`, que resultó ser un namespace de ClickUp completamente distinto (el estado propio de la subtarea, no la columna del tablero que ve el jefe de taller).
+- El tablero se refresca solo cada 60s. Probado en vivo: alta/baja de asignación isla↔técnico funciona; la carga salió en `0` para todos porque ningún técnico tenía tareas asignadas sincronizadas todavía (el webhook recién se arregló hoy, así que las asignaciones de ANTES del fix nunca llegaron al CRM) — se va a ir llenando solo con el uso normal de ahora en adelante.
+
+### Formato real de la Orden de Trabajo (`0018_orden_ingreso_formato.sql`)
+El cliente compartió el papel real (Dimasoft/CamScanner) y pidió que el comprobante de Nuevo Ingreso saliera igual. Comparado campo a campo: `vehiculos.color`/`vin` ya existían desde el Bloque 2 pero el formulario nunca los pedía; faltaban `puertas` y `aseguradora` por completo; "Cliente Solicita" no tenía campo propio (se agregó separado de "Observaciones", que es para notas del asesor); "¿Eres dueño o conductor?" se modeló como dato de la visita puntual (`inspecciones_ingreso.rol_persona_presente`), no como el atributo permanente que ya existía en `clientes_vehiculos`. El comprobante impreso ahora trae encabezado de la empresa, N° de OT/fecha/página, los dos bloques de datos cliente/vehículo, "Cliente Solicita", el texto legal de "Políticas de servicio" (copiado tal cual del papel), y el bloque de firma con nombre/celular/dueño-o-conductor. Probado en vivo con un ingreso real: el documento salió visualmente equivalente al de referencia.
+
+### Prueba de proceso completo, de punta a punta
+El cliente pidió una prueba real con los dos correos (asesor + cliente) usando su propio correo (`admdidial@outlook.com`) para ambos roles. Secuencia probada contra producción real (OT 14013, cliente "PruebaCompleta Proceso", vehículo "PRUE11"):
+1. Nuevo ingreso (con el formato nuevo) → asesor quedó automáticamente en quien tenía la sesión abierta.
+2. Sincronizar con ClickUp → tarjeta creada.
+3. El cliente movió la tarjeta a **LISTO PARA ENTREGA** en ClickUp → correo al asesor recibido y confirmado.
+4. "Marcar como entregado" en el CRM → encuesta de postventa programada automáticamente.
+5. Encuesta adelantada a hoy por SQL y enviada desde Oportunidades → correo de postventa al cliente recibido y confirmado.
+
+**Los dos correos del ciclo de vida de una OT (aviso al asesor + encuesta al cliente) quedan confirmados funcionando de punta a punta con datos reales.** Datos de prueba limpiados; recordado al cliente borrar la tarjeta de ClickUp correspondiente.
+
 ## 2026-09-15 — Alta real del equipo de Didial + clave provisoria forzada
 
 **Qué se entrega:** el cliente compartió la planilla real de personal

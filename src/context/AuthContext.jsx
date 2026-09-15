@@ -24,7 +24,9 @@ export function AuthProvider({ children }) {
       try {
         const { data, error: errorConsulta } = await supabase
           .from('usuarios')
-          .select('id, empresa_id, nombre_completo, correo, rol, activo, debe_cambiar_clave, empresas(nombre)')
+          .select(
+            'id, empresa_id, nombre_completo, correo, rol, activo, debe_cambiar_clave, empresas(nombre, direccion, telefono, correo)'
+          )
           .eq('id', sesionActual.user.id)
           .maybeSingle()
 
