@@ -1,5 +1,56 @@
 # Registro de cambios
 
+## 2026-09-15 — Alta real del equipo de Didial + clave provisoria forzada
+
+**Qué se entrega:** el cliente compartió la planilla real de personal
+(`Usuarios.xlsx`, 12 personas con su correo y rol de taller) para dar de
+alta las cuentas reales del CRM, con el número de ficha como clave
+provisoria de cada persona.
+
+### Verificación previa: asignación de mecánico por tarea vía ClickUp
+Antes de dar de alta al equipo real, se probó en vivo la pregunta puntual
+del cliente: *si el jefe de taller asigna un mecánico a una tarea en
+ClickUp, ¿el CRM registra quién hizo cada tarea, tarea por tarea?* Se creó
+una OT de prueba (14011, cliente "PruebaMecanico", vehículo "PRUE09") con
+una tarea de mano de obra, se sincronizó con ClickUp, y el cliente asignó
+un mecánico real a esa tarjeta. Resultado confirmado por SQL: el webhook
+sí procesa la asignación por tarea individual -pero el campo que se llena
+depende de si el correo del asignado de ClickUp matchea un `usuarios.correo`
+existente (`tecnico_id`) o no (cae al respaldo `clickup_asignado_nombre`,
+como pasó en esta prueba porque el mecánico todavía no estaba dado de alta
+en el sistema). Esto confirmó que el alta real del equipo era necesaria
+para que el Informe de retrabajos por técnico (Bloque 9) capture a todos.
+Datos de prueba limpiados al cerrar (OT 14011, cliente y vehículo).
+
+### Clave provisoria forzada (`0016_forzar_cambio_clave.sql`)
+El cliente pidió usar el número de ficha de cada persona como clave
+provisoria al crear su cuenta, pero exigiendo que la cambien por una propia
+en el primer ingreso -el CRM no tenía ninguna pantalla de cambio de clave
+ni forma de forzarlo-. Se agregó:
+- `usuarios.debe_cambiar_clave` (boolean, default false).
+- Función `marcar_clave_cambiada()` (`SECURITY DEFINER`, alcance mínimo:
+  solo apaga el flag del propio `auth.uid()`). No se abrió la policy de
+  UPDATE general de `usuarios` -esa sigue exigiendo `es_admin()`- para que
+  nadie pueda auto-asignarse rol o activarse vía este mecanismo.
+- `RutaProtegida` redirige a `/cambiar-clave` en cuanto detecta el flag en
+  true, para cualquier ruta que no sea esa misma.
+- Página nueva `CambiarClave.jsx`: pide la clave nueva dos veces, llama
+  `supabase.auth.updateUser({password})` y luego `marcar_clave_cambiada()`.
+
+Probado en vivo por el cliente con una cuenta real: la clave provisoria
+lleva directo a "Define tu clave", y tras definirla ya no se vuelve a pedir
+en sesiones siguientes.
+
+### Alta de las 12 cuentas reales
+Rol de taller → rol del sistema: Mecánico/Mecánico junior/Alineación-Compras
+→ `tecnico`; Detailer → `detailer`; Jefe de taller → `jefe_taller`;
+Administrador → `admin`; Asesor de servicios → `asesor`; Socio/Socia →
+`socia`; Adquisiciones-Bodega → `encargado_presupuestos` (el rol del
+sistema no tiene un equivalente literal de "bodega"; se usó ese porque es
+el que da acceso a montos/costos, decisión confirmada por el cliente).
+Las 12 cuentas quedaron creadas en Supabase Auth por el cliente, activadas
+y con rol vía SQL, y con `debe_cambiar_clave = true`.
+
 ## 2026-09-15 — Flujo completo de estados de ClickUp + el webhook nunca había funcionado
 
 **Qué se entrega:** el cliente detalló el resto del flujo real de estados

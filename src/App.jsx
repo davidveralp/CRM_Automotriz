@@ -4,6 +4,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import Menu from './components/Menu'
 import RutaProtegida from './components/RutaProtegida'
 import Login from './pages/Login'
+import CambiarClave from './pages/CambiarClave'
 import Inicio from './pages/Inicio'
 import Clientes from './pages/Clientes'
 import ClienteDetalle from './pages/ClienteDetalle'
@@ -44,6 +45,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/encuesta/:token" element={<EncuestaPublica />} />
+          <Route path="/cambiar-clave" element={paginaProtegida(<CambiarClave />)} />
           <Route path="/" element={paginaProtegida(<Inicio />)} />
           <Route path="/clientes" element={paginaProtegida(<Clientes />)} />
           <Route path="/clientes/:id" element={paginaProtegida(<ClienteDetalle />)} />
