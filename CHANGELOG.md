@@ -1,5 +1,90 @@
 # Registro de cambios
 
+## 2026-09-15 — Flujo completo de estados de ClickUp + el webhook nunca había funcionado
+
+**Qué se entrega:** el cliente detalló el resto del flujo real de estados
+de ClickUp después de "agenda"/"POR DESIGNAR" (EN REPARACIÓN, EN REP.
+SERVICIO EXTERNO, COMPRA REPTOS, ESPERA REPTOS (CLIENTE), PINTURA/
+DESABOLLADURA, PRUEBA EN RUTA, RETROCESO, LAVADO, ALINEACIÓN, LISTO PARA
+ENTREGA, COMPLETADAS). De ahí salieron tres necesidades concretas, resueltas
+y probadas de punta a punta contra ClickUp real — y en el camino se
+descubrió que **el webhook ClickUp→CRM nunca había funcionado, desde que se
+desplegó en el Bloque 4**.
+
+### Las tres necesidades del cliente
+1. **RETROCESO = "retrabajo".** Cuando el jefe de taller mueve una tarjeta
+   a RETROCESO, el CRM ahora vincula automáticamente esa OT a la más
+   reciente ya entregada del mismo vehículo (mismo campo
+   `trabajo_original_id` del Bloque 9). Si no encuentra una OT entregada
+   anterior, lo deja registrado en `integraciones_clickup_errores` en vez
+   de fallar en silencio.
+2. **"ESPERA REPTOS (CLIENTE)"**: nuevo campo `ot_detalle.provisto_por_cliente`.
+   Un repuesto marcado así no se valoriza -la tabla de Valorización muestra
+   "Cliente lo trae · no se valoriza" en vez de los campos de costo/precio-
+   y es mutuamente excluyente con vincular un producto de Bodega (si lo
+   trae el cliente, no sale de nuestro inventario).
+3. **"LISTO PARA ENTREGA"**: aviso activo por correo al asesor de la OT
+   (reutiliza Brevo, ya wireado desde el Bloque 7), disparado solo en la
+   TRANSICIÓN -se agregó `trabajos_taller.clickup_estado_actual` para
+   comparar contra el estado anterior y no reenviar en cada evento
+   mientras la tarjeta sigue en el mismo estado-.
+
+### El hallazgo grande: el webhook nunca recibió una sola petición real
+Al probar RETROCESO en vivo, nada pasaba -ni el vínculo automático ni un
+error registrado-. Se rastreó en tres pasos:
+1. **El webhook de ClickUp estaba `suspended`** (`fail_count: 103`) -
+   ClickUp deja de intentar la entrega después de demasiados fallos
+   seguidos-. Se reactivó vía `PUT /webhook/{id}` con `status: "active"`.
+2. Al reactivarlo y disparar un evento nuevo, **Supabase respondía 401
+   `UNAUTHORIZED_NO_AUTH_HEADER` antes de que el código de la función
+   corriera.** Supabase exige por defecto un JWT propio en cada peticion a
+   una Edge Function; ClickUp nunca manda eso -manda su propia firma HMAC,
+   que se verifica *dentro* del código (`firmaValida()`), pero la petición
+   nunca llegaba tan lejos-.
+3. Se corrigió desplegando `clickup-webhook` con
+   `supabase functions deploy clickup-webhook --no-verify-jwt` -flag
+   correcto para un endpoint que llama un tercero externo y se autentica
+   con su propia firma, no con un JWT de Supabase-.
+
+**Esto explica los 103 fallos acumulados: el webhook estuvo roto desde el
+día que se desplegó en el Bloque 4, silenciosamente, porque nunca se probó
+contra tráfico real hasta ahora.** Ningún cambio hecho directamente en
+ClickUp (nuevas subtareas del jefe de taller, ítems de checklist, cambios
+de estado) se había reflejado jamás en el CRM.
+
+### Bug real de regresión encontrado y corregido de paso
+`reconciliarChecklists()` (dentro de `clickup-webhook`) tenía su propio
+mapeo de nombres de checklist hardcodeado por separado
+(`REPUESTOS`/`LUBRICANTES E INSUMOS`/`SERVICIO EXTERNO`), que quedó
+desincronizado en silencio cuando se corrigieron los nombres reales del
+lado CRM→ClickUp más temprano en el día. Corregido invirtiendo la misma
+constante (`NOMBRE_CHECKLIST_POR_AREA`) en vez de mantener una copia aparte.
+
+### Base de datos (`0015_clickup_estados_avanzados.sql`)
+- `trabajos_taller.clickup_estado_actual`, `ot_detalle.provisto_por_cliente`.
+- `ot_detalle_con_permiso` extendida de nuevo (columna al final, mismo
+  gotcha ya documentado del Bloque 6).
+
+### Probado de punta a punta contra ClickUp real
+Vehículo con una OT entregada (14009) → segunda OT del mismo vehículo
+(14010), sincronizada a ClickUp → movida a RETROCESO en ClickUp real →
+confirmado por SQL que `trabajo_original_id` apuntó a la 14009 → movida a
+LISTO PARA ENTREGA → correo recibido de verdad por el asesor, confirmado
+por el cliente, con `clickup_estado_actual` reflejando la transición. El
+campo "cliente lo trae" probado en el CRM: badge visible, valorización
+colapsada, mutuamente excluyente con el producto de bodega.
+
+### Pendiente
+- El segundo webhook que apareció en la respuesta de la API
+  (`ehpstxrzsjwcevcafxgk.supabase.co/functions/v1/clickup-sync`) es de otro
+  proyecto/experimento del cliente, confirmado por él mismo -no se tocó-.
+- No se construyó nada para EN REP. SERVICIO EXTERNO, COMPRA REPTOS,
+  PINTURA/DESABOLLADURA, PRUEBA EN RUTA, LAVADO, ALINEACIÓN ni COMPLETADAS
+  -el cliente no pidió una acción concreta del CRM para esos estados, solo
+  los tres detallados arriba-.
+
+---
+
 ## 2026-09-15 — Primera prueba real de la sincronización con ClickUp
 
 **Qué se entrega:** el botón "Sincronizar con ClickUp" nunca se había

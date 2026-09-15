@@ -18,7 +18,15 @@
 // adivinara la URL podría inyectar datos falsos en el taller.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { respuestaJson, respuestaPreflight } from '../_shared/cors.ts'
-import { obtenerTarea } from '../_shared/clickup.ts'
+import { NOMBRE_CHECKLIST_POR_AREA, obtenerTarea } from '../_shared/clickup.ts'
+import { enviarCorreo } from '../_shared/brevo.ts'
+
+// Nombres de estado que el cliente confirmó el 2026-09-15 (ver CHANGELOG).
+// Comparados siempre en minúsculas: la API de ClickUp normaliza el status
+// a minúsculas al devolverlo, aunque se haya creado con otra capitalización
+// (así se creó "POR DESIGNAR" en clickup-sincronizar, por ejemplo).
+const ESTADO_RETROCESO = 'retroceso'
+const ESTADO_LISTO_PARA_ENTREGA = 'listo para entrega'
 
 async function firmaValida(cuerpoCrudo: string, firmaRecibida: string | null): Promise<boolean> {
   const secreto = Deno.env.get('CLICKUP_WEBHOOK_SECRET')
@@ -119,15 +127,63 @@ Deno.serve(async (req) => {
       return respuestaJson({ data: { actualizada: 'tarea_taller', id: tareaExistente.id } })
     }
 
-    // Caso 2: es la tarjeta (OT) misma -> reconciliar sus checklists.
+    // Caso 2: es la tarjeta (OT) misma -> reconciliar sus checklists, y
+    // reaccionar a los estados que el cliente detalló el 2026-09-15.
     const { data: trabajo } = await supabase
       .from('trabajos_taller')
-      .select('id, empresa_id')
+      .select(
+        'id, empresa_id, numero_ot, vehiculo_id, trabajo_original_id, asesor_id, clickup_estado_actual, clientes(nombre, apellido, razon_social), vehiculos(patente, marca, modelo)'
+      )
       .eq('clickup_task_id', taskId)
       .maybeSingle()
 
     if (trabajo) {
       await reconciliarChecklists(supabase, trabajo.id, tareaRemota.checklists ?? [])
+
+      const estadoClickUp = (tareaRemota.status?.status ?? '').toLowerCase()
+
+      // RETROCESO = "retrabajo" (confirmado por el cliente 2026-09-15):
+      // vincular a la OT original del mismo vehículo -la más reciente ya
+      // entregada- si todavía no tiene una. Si no hay ninguna OT entregada
+      // anterior para ese vehículo, queda registrado como aviso en vez de
+      // fallar: puede que el retroceso sea de una OT que el CRM no
+      // administra, o que haga falta vincularlo a mano.
+      if (estadoClickUp === ESTADO_RETROCESO && !trabajo.trabajo_original_id && trabajo.vehiculo_id) {
+        const { data: original } = await supabase
+          .from('trabajos_taller')
+          .select('id')
+          .eq('vehiculo_id', trabajo.vehiculo_id)
+          .eq('estado', 'entregado')
+          .neq('id', trabajo.id)
+          .order('fecha_entrega', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (original) {
+          await supabase.from('trabajos_taller').update({ trabajo_original_id: original.id }).eq('id', trabajo.id)
+        } else {
+          await registrarError(
+            trabajo.empresa_id,
+            trabajo.id,
+            'retroceso_sin_ot_original',
+            new Error(
+              'ClickUp marcó esta tarjeta como RETROCESO pero no se encontró una OT entregada anterior para el mismo vehículo. Revisar y vincular a mano si corresponde.'
+            )
+          )
+        }
+      }
+
+      // "Listo para entrega": aviso activo al asesor por correo, solo en la
+      // TRANSICIÓN -se compara contra el último estado guardado para no
+      // reenviar en cada evento mientras la tarjeta sigue en este estado-.
+      if (estadoClickUp === ESTADO_LISTO_PARA_ENTREGA && trabajo.clickup_estado_actual !== ESTADO_LISTO_PARA_ENTREGA) {
+        await avisarListoParaEntrega(supabase, trabajo, registrarError)
+      }
+
+      if (estadoClickUp && estadoClickUp !== trabajo.clickup_estado_actual) {
+        await supabase.from('trabajos_taller').update({ clickup_estado_actual: estadoClickUp }).eq('id', trabajo.id)
+      }
+
       return respuestaJson({ data: { reconciliado: 'trabajos_taller', id: trabajo.id } })
     }
 
@@ -172,6 +228,60 @@ Deno.serve(async (req) => {
   }
 })
 
+// Aviso por correo al asesor cuando la tarjeta llega a "listo para
+// entrega": sin esto, nada le avisa de forma activa que puede cobrar -el
+// spec original pide justo eso: "informar en el sistema para que el
+// asesor pueda tomar el trabajo realizado y realizar el cobro"-.
+async function avisarListoParaEntrega(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  trabajo: {
+    id: string
+    empresa_id: string
+    numero_ot: number
+    asesor_id: string | null
+    clientes: { nombre: string; apellido: string | null; razon_social: string | null } | { nombre: string; apellido: string | null; razon_social: string | null }[] | null
+    vehiculos: { patente: string; marca: string; modelo: string } | { patente: string; marca: string; modelo: string }[] | null
+  },
+  registrarError: (empresaId: string | null, trabajoId: string | null, operacion: string, error: unknown) => Promise<void>
+) {
+  if (!trabajo.asesor_id) {
+    await registrarError(
+      trabajo.empresa_id,
+      trabajo.id,
+      'aviso_listo_entrega',
+      new Error('La OT no tiene asesor asignado; no se pudo avisar por correo.')
+    )
+    return
+  }
+
+  const { data: asesor } = await supabase
+    .from('usuarios')
+    .select('correo, nombre_completo')
+    .eq('id', trabajo.asesor_id)
+    .maybeSingle()
+
+  if (!asesor?.correo) {
+    await registrarError(trabajo.empresa_id, trabajo.id, 'aviso_listo_entrega', new Error('No se encontró el correo del asesor asignado.'))
+    return
+  }
+
+  const cliente = Array.isArray(trabajo.clientes) ? trabajo.clientes[0] : trabajo.clientes
+  const vehiculo = Array.isArray(trabajo.vehiculos) ? trabajo.vehiculos[0] : trabajo.vehiculos
+  const nombreCliente = cliente?.razon_social || [cliente?.nombre, cliente?.apellido].filter(Boolean).join(' ')
+
+  try {
+    await enviarCorreo({
+      destinatarioEmail: asesor.correo,
+      destinatarioNombre: asesor.nombre_completo,
+      asunto: `Listo para entrega: OT ${trabajo.numero_ot}`,
+      html: `<p>La OT <strong>${trabajo.numero_ot}</strong> (${vehiculo?.patente ?? ''} — ${vehiculo?.marca ?? ''} ${vehiculo?.modelo ?? ''}, cliente ${nombreCliente}) quedó marcada como <strong>LISTO PARA ENTREGA</strong> en ClickUp. Contacta al cliente y registra el cobro en el CRM.</p>`,
+    })
+  } catch (error) {
+    await registrarError(trabajo.empresa_id, trabajo.id, 'aviso_listo_entrega', error)
+  }
+}
+
 // Compara los checklists que trae ClickUp contra ot_detalle: marca
 // verificado/nombre en los ítems que ya conocemos, e importa los que se
 // hayan agregado directamente en ClickUp.
@@ -181,11 +291,15 @@ async function reconciliarChecklists(
   trabajoId: string,
   checklists: { id: string; name: string; items: { id: string; name: string; resolved: boolean }[] }[]
 ) {
-  const NOMBRE_A_AREA: Record<string, string> = {
-    REPUESTOS: 'repuestos',
-    'LUBRICANTES E INSUMOS': 'lubricantes_insumos',
-    'SERVICIO EXTERNO': 'servicios_externos',
-  }
+  // Antes tenía su propio mapeo hardcodeado con los nombres viejos
+  // (REPUESTOS/LUBRICANTES E INSUMOS/SERVICIO EXTERNO) -se desincronizó en
+  // silencio el 2026-09-15 cuando se corrigieron los nombres reales en
+  // NOMBRE_CHECKLIST_POR_AREA (dirección CRM->ClickUp) sin tocar este
+  // archivo-. Se invierte esa misma constante en vez de mantener una copia
+  // aparte, para que no vuelva a pasar.
+  const NOMBRE_A_AREA: Record<string, string> = Object.fromEntries(
+    Object.entries(NOMBRE_CHECKLIST_POR_AREA).map(([area, nombre]) => [nombre, area])
+  )
 
   for (const checklist of checklists) {
     const area = NOMBRE_A_AREA[checklist.name]

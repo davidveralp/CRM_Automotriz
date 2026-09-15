@@ -63,6 +63,7 @@ function TrabajoDetalle() {
   const [detalleTexto, setDetalleTexto] = useState('')
   const [cantidadDetalle, setCantidadDetalle] = useState('1')
   const [productoDetalle, setProductoDetalle] = useState('')
+  const [provistoPorCliente, setProvistoPorCliente] = useState(false)
   const [guardandoDetalle, setGuardandoDetalle] = useState(false)
 
   const [generandoPresupuesto, setGenerandoPresupuesto] = useState(false)
@@ -97,7 +98,7 @@ function TrabajoDetalle() {
         // NULL solos si el usuario no tiene tiene_acceso_montos().
         supabase
           .from('ot_detalle_con_permiso')
-          .select('id, area, detalle, cantidad, costo_unitario, precio_unitario, total_linea, verificado, decision, motivo_rechazo, fecha_postergado, presupuesto_id, hallazgo_precio_referencial, producto_id, producto_nombre, producto_stock_actual, producto_unidad_medida')
+          .select('id, area, detalle, cantidad, costo_unitario, precio_unitario, total_linea, verificado, decision, motivo_rechazo, fecha_postergado, presupuesto_id, hallazgo_precio_referencial, producto_id, producto_nombre, producto_stock_actual, producto_unidad_medida, provisto_por_cliente')
           .eq('trabajo_id', id)
           .order('creado_en'),
         supabase.from('presupuestos_taller').select('id, correlativo, estado, creado_en').eq('trabajo_id', id).order('creado_en', { ascending: false }),
@@ -161,7 +162,8 @@ function TrabajoDetalle() {
         area: areaDetalle,
         detalle: detalleTexto,
         cantidad: Number(cantidadDetalle) || 1,
-        producto_id: productoDetalle || null,
+        producto_id: provistoPorCliente ? null : productoDetalle || null,
+        provisto_por_cliente: provistoPorCliente,
       })
       if (errorInsercion) {
         setError(errorInsercion.message)
@@ -170,6 +172,7 @@ function TrabajoDetalle() {
       setDetalleTexto('')
       setCantidadDetalle('1')
       setProductoDetalle('')
+      setProvistoPorCliente(false)
       await cargarTodo()
     } catch {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
@@ -430,6 +433,9 @@ function TrabajoDetalle() {
                       Bodega: {item.producto_nombre} (stock {item.producto_stock_actual} {item.producto_unidad_medida})
                     </p>
                   )}
+                  {item.provisto_por_cliente && (
+                    <p className="mt-0.5 text-xs font-medium text-amber-700">Cliente lo trae · no se valoriza</p>
+                  )}
                 </li>
               ))}
             {detalle.filter((item) => item.area !== 'mano_obra').length === 0 && (
@@ -450,19 +456,34 @@ function TrabajoDetalle() {
                   </option>
                 ))}
             </select>
-            {(areaDetalle === 'repuestos' || areaDetalle === 'lubricantes_insumos') && productos.length > 0 && (
-              <select
-                value={productoDetalle}
-                onChange={(evento) => setProductoDetalle(evento.target.value)}
-                className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              >
-                <option value="">Sin vincular a bodega</option>
-                {productos.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nombre} (stock {p.stock_actual} {p.unidad_medida})
-                  </option>
-                ))}
-              </select>
+            {(areaDetalle === 'repuestos' || areaDetalle === 'lubricantes_insumos') && (
+              <>
+                {!provistoPorCliente && productos.length > 0 && (
+                  <select
+                    value={productoDetalle}
+                    onChange={(evento) => setProductoDetalle(evento.target.value)}
+                    className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Sin vincular a bodega</option>
+                    {productos.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre} (stock {p.stock_actual} {p.unidad_medida})
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <label className="mb-2 flex items-center gap-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={provistoPorCliente}
+                    onChange={(evento) => {
+                      setProvistoPorCliente(evento.target.checked)
+                      if (evento.target.checked) setProductoDetalle('')
+                    }}
+                  />
+                  El cliente trae este repuesto (no se valoriza)
+                </label>
+              </>
             )}
             <div className="mb-2 flex gap-2">
               <input
@@ -531,33 +552,38 @@ function TrabajoDetalle() {
                   <td className="px-3 py-2 text-slate-500">{ETIQUETA_AREA[item.area]}</td>
                   <td className="px-3 py-2 text-slate-800">{item.detalle}</td>
                   <td className="px-3 py-2 text-slate-600">{item.cantidad}</td>
-                  {tieneAccesoMontos && (
-                    <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        defaultValue={item.costo_unitario ?? ''}
-                        onBlur={(evento) => actualizarPrecioItem(item.id, 'costo_unitario', evento.target.value)}
-                        className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
-                      />
-                    </td>
-                  )}
-                  {tieneAccesoMontos && (
-                    <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        defaultValue={item.precio_unitario ?? ''}
-                        onBlur={(evento) => actualizarPrecioItem(item.id, 'precio_unitario', evento.target.value)}
-                        className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
-                      />
-                      {item.hallazgo_precio_referencial != null && (
-                        <p className={`mt-1 text-xs ${precioSeAlejaDelReferencial(item) ? 'font-medium text-amber-700' : 'text-slate-400'}`}>
-                          Ref: {formatoMoneda(item.hallazgo_precio_referencial)}
-                          {precioSeAlejaDelReferencial(item) && ' ⚠ se aleja del referencial'}
-                        </p>
-                      )}
-                    </td>
-                  )}
-                  {tieneAccesoMontos && <td className="px-3 py-2 text-slate-800">{formatoMoneda(item.total_linea)}</td>}
+                  {tieneAccesoMontos &&
+                    (item.provisto_por_cliente ? (
+                      <td className="px-3 py-2 text-xs font-medium text-amber-700" colSpan={3}>
+                        Cliente lo trae · no se valoriza
+                      </td>
+                    ) : (
+                      <>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            defaultValue={item.costo_unitario ?? ''}
+                            onBlur={(evento) => actualizarPrecioItem(item.id, 'costo_unitario', evento.target.value)}
+                            className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            defaultValue={item.precio_unitario ?? ''}
+                            onBlur={(evento) => actualizarPrecioItem(item.id, 'precio_unitario', evento.target.value)}
+                            className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                          />
+                          {item.hallazgo_precio_referencial != null && (
+                            <p className={`mt-1 text-xs ${precioSeAlejaDelReferencial(item) ? 'font-medium text-amber-700' : 'text-slate-400'}`}>
+                              Ref: {formatoMoneda(item.hallazgo_precio_referencial)}
+                              {precioSeAlejaDelReferencial(item) && ' ⚠ se aleja del referencial'}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-slate-800">{formatoMoneda(item.total_linea)}</td>
+                      </>
+                    ))}
                   <td className="px-3 py-2">
                     <select
                       value={item.decision}
