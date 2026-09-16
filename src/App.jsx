@@ -64,11 +64,17 @@ function App() {
           />
           <Route
             path="/presupuestos"
-            element={paginaProtegida(<Presupuestos />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller'])}
+            element={paginaProtegida(<Presupuestos />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller', 'asesor'])}
           />
           <Route
             path="/presupuestos/:id"
-            element={paginaProtegida(<PresupuestoDetalle />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller'])}
+            element={paginaProtegida(<PresupuestoDetalle />, [
+              'admin',
+              'socia',
+              'encargado_presupuestos',
+              'jefe_taller',
+              'asesor',
+            ])}
           />
           <Route path="/informes" element={paginaProtegida(<Informes />, ['admin', 'socia'])} />
           <Route

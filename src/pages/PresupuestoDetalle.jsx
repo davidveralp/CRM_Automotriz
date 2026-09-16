@@ -73,7 +73,9 @@ function PresupuestoDetalle() {
         await Promise.all([
           supabase
             .from('trabajos_taller')
-            .select('numero_ot, clientes(nombre, apellido, razon_social, rut), vehiculos(patente, marca, modelo, anio, color)')
+            .select(
+              'numero_ot, clientes(nombre, apellido, razon_social, rut, telefono_norm), vehiculos(patente, marca, modelo, anio, color)'
+            )
             .eq('id', presupuestoData.trabajo_id)
             .maybeSingle(),
           supabase.from('inspecciones_ingreso').select('cliente_solicita').eq('trabajo_id', presupuestoData.trabajo_id).maybeSingle(),
@@ -142,6 +144,21 @@ function PresupuestoDetalle() {
   const neto = Math.round(total / 1.19)
   const iva = total - neto
 
+  const telefonoCliente = trabajo?.clientes?.telefono_norm
+  const linkWhatsapp = telefonoCliente
+    ? `https://wa.me/${telefonoCliente.replace('+', '')}?text=${encodeURIComponent(
+        [
+          `Hola ${nombreCliente(trabajo?.clientes)}, te compartimos el presupuesto ${presupuesto.correlativo} para tu ${trabajo?.vehiculos?.marca} ${trabajo?.vehiculos?.modelo} (${trabajo?.vehiculos?.patente}):`,
+          '',
+          ...items.map((item) => `- ${item.detalle}: $${formatoNumero(item.total_linea)}`),
+          '',
+          `Total: $${formatoNumero(total)}`,
+          '',
+          'Quedamos atentos a tus consultas.',
+        ].join('\n')
+      )}`
+    : null
+
   return (
     <div className="p-6">
       <div className="mb-4 flex flex-wrap items-center gap-2 print:hidden">
@@ -152,6 +169,20 @@ function PresupuestoDetalle() {
         >
           Imprimir / guardar como PDF
         </button>
+        {linkWhatsapp ? (
+          <a
+            href={linkWhatsapp}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700"
+          >
+            Enviar por WhatsApp
+          </a>
+        ) : (
+          <span className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            El cliente no tiene teléfono registrado
+          </span>
+        )}
         <Link
           to={`/trabajos/${presupuesto.trabajo_id}`}
           className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"

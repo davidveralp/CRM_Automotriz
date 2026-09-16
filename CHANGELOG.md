@@ -1,5 +1,20 @@
 # Registro de cambios
 
+## 2026-09-16 — El asesor ve precio (no costo) de los presupuestos + botón de WhatsApp
+
+**Qué se entrega:** el cliente recordó una regla de negocio central que el módulo de Presupuestos de hoy no respetaba: "el asesor es el único que tiene contacto con el cliente en todo momento. Él envía y negocia los presupuestos gestionados". El asesor quedaba fuera de `tiene_acceso_montos()` -correcto para el costo/margen, pero un problema real para negociar un precio que no podía ver-.
+
+### Separación precio de venta / costo (`0019_precio_venta_asesor.sql`)
+- Nueva función `tiene_acceso_precio_venta()` = mismo grupo de `tiene_acceso_montos()` (socia/admin/encargado_presupuestos/jefe_taller) **más el asesor**. `ot_detalle_con_permiso` ahora gatea `precio_unitario`/`total_linea` con esta función nueva, mientras `costo_unitario` sigue exigiendo `tiene_acceso_montos()` sin cambios -el asesor nunca ve margen-.
+- `presupuestos_taller` UPDATE ahora también permite al asesor (además del grupo de siempre) -es él quien recibe la respuesta real del cliente tras negociar y marca aceptado/parcial/rechazado-. El INSERT (generar el presupuesto) sigue exclusivo del encargado de presupuestos/admin/socia/jefe_taller.
+- **Bug encontrado y corregido de paso, en el mismo cambio:** la vista ya devolvía el precio al asesor, pero `TrabajoDetalle.jsx` seguía ocultando la columna completa de Precio/Total (no solo Costo) detrás del mismo flag viejo que controla Costo -un frontend desincronizado del nuevo permiso del backend-. Se separó en dos flags (`tieneAccesoMontos` para costo/edición de precio, `tieneAccesoPrecioVenta` para ver precio/total de solo lectura) y se corrigió el `colSpan` dinámico de la fila "Cliente lo trae" para que siga alineada sin importar cuántas de las 3 columnas de montos ve cada rol.
+
+### Botón de WhatsApp (`wa.me`, sin API de Meta)
+- La integración real de WhatsApp Business (Meta Cloud API) sigue pospuesta desde el Bloque 8 (requiere verificación de negocio y aprobación de plantillas). En vez de eso: botón "Enviar por WhatsApp" en `TrabajoDetalle.jsx` (junto a cada presupuesto) y en `PresupuestoDetalle.jsx` (documento completo), que abre `https://wa.me/<telefono>` con un mensaje prellenado (resumen o detalle itemizado + total) usando `clientes.telefono_norm`. El asesor revisa y aprieta enviar él mismo desde WhatsApp Web/app -no hace falta ninguna credencial nueva, funciona hoy mismo-.
+
+### Probado de punta a punta con las dos cuentas reales
+Probado con la cuenta real de Diego Leyton (asesor) contra un presupuesto generado por David Vera (admin): Diego vio precio/total sin costo, no vio "Generar presupuesto", pudo marcar el presupuesto como rechazado (con `fecha_respuesta` registrada), y el enlace de WhatsApp abrió con el número y mensaje correctos en ambas pantallas. **Hallazgo de sesión (no bug de código):** las pestañas del navegador comparten la misma sesión de Supabase Auth (localStorage) -entrar como Diego en una pestaña cierra la sesión de admin en todas las demás-, hubo que alternar cuentas varias veces para probar ambos lados. Datos de prueba limpiados (OT 14015, cliente "PruebaAsesor Whatsapp", vehículo "PRUE13", presupuesto P-00003).
+
 ## 2026-09-16 — Módulo de Presupuestos (lista, documento real, seguimiento)
 
 **Qué se entrega:** el cliente compartió el formato real de "Presupuesto" (Dimasoft) y pidió un módulo dedicado -tarea del encargado de adquisiciones (Víctor Tello, rol `encargado_presupuestos`)- con comunicación con las OTs y seguimiento de estado.

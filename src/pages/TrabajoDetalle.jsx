@@ -45,6 +45,8 @@ function TrabajoDetalle() {
   const { id } = useParams()
   const { usuario } = useAuth()
   const tieneAccesoMontos = ROLES_CON_ACCESO_MONTOS.includes(usuario?.rol)
+  const tieneAccesoPrecioVenta = tieneAccesoMontos || usuario?.rol === 'asesor'
+  const columnasMontos = (tieneAccesoMontos ? 1 : 0) + (tieneAccesoPrecioVenta ? 2 : 0)
 
   const [trabajo, setTrabajo] = useState(null)
   const [tareas, setTareas] = useState([])
@@ -86,7 +88,7 @@ function TrabajoDetalle() {
       ] = await Promise.all([
         supabase
           .from('trabajos_taller')
-          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, numero_documento_facturacion, fecha_entrega, clientes(nombre, apellido, razon_social), vehiculos(patente, marca, modelo, anio)')
+          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, numero_documento_facturacion, fecha_entrega, clientes(nombre, apellido, razon_social, telefono_norm), vehiculos(patente, marca, modelo, anio)')
           .eq('id', id)
           .maybeSingle(),
         supabase
@@ -528,17 +530,36 @@ function TrabajoDetalle() {
         </div>
 
         {presupuestos.length > 0 && (
-          <p className="mb-2 text-sm text-slate-500">
-            Presupuestos:{' '}
-            {presupuestos.map((p, indice) => (
-              <span key={p.id}>
-                {indice > 0 && ' · '}
-                <Link to={`/presupuestos/${p.id}`} className="underline hover:text-slate-700">
-                  {p.correlativo} ({p.estado})
-                </Link>
-              </span>
-            ))}
-          </p>
+          <div className="mb-2 space-y-1 text-sm text-slate-500">
+            {presupuestos.map((p) => {
+              const totalPresupuesto = detalle
+                .filter((item) => item.presupuesto_id === p.id)
+                .reduce((acumulado, item) => acumulado + (item.total_linea || 0), 0)
+              const telefonoCliente = trabajo?.clientes?.telefono_norm
+              const linkWhatsapp = telefonoCliente
+                ? `https://wa.me/${telefonoCliente.replace('+', '')}?text=${encodeURIComponent(
+                    `Hola ${nombreCliente(trabajo?.clientes)}, te compartimos el presupuesto ${p.correlativo} para tu ${trabajo?.vehiculos?.marca} ${trabajo?.vehiculos?.modelo} (${trabajo?.vehiculos?.patente}). Total: ${formatoMoneda(totalPresupuesto)}. El detalle completo está en el documento adjunto. Quedamos atentos a tus consultas.`
+                  )}`
+                : null
+              return (
+                <p key={p.id}>
+                  <Link to={`/presupuestos/${p.id}`} className="underline hover:text-slate-700">
+                    {p.correlativo} ({p.estado})
+                  </Link>
+                  {linkWhatsapp && (
+                    <a
+                      href={linkWhatsapp}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ml-2 rounded bg-green-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-green-700"
+                    >
+                      WhatsApp
+                    </a>
+                  )}
+                </p>
+              )
+            })}
+          </div>
         )}
 
         <div className="overflow-x-auto rounded border border-slate-200 bg-white">
@@ -549,8 +570,8 @@ function TrabajoDetalle() {
                 <th className="px-3 py-2">Detalle</th>
                 <th className="px-3 py-2">Cant.</th>
                 {tieneAccesoMontos && <th className="px-3 py-2">Costo</th>}
-                {tieneAccesoMontos && <th className="px-3 py-2">Precio</th>}
-                {tieneAccesoMontos && <th className="px-3 py-2">Total</th>}
+                {tieneAccesoPrecioVenta && <th className="px-3 py-2">Precio</th>}
+                {tieneAccesoPrecioVenta && <th className="px-3 py-2">Total</th>}
                 <th className="px-3 py-2">Decisión</th>
               </tr>
             </thead>
@@ -560,36 +581,44 @@ function TrabajoDetalle() {
                   <td className="px-3 py-2 text-slate-500">{ETIQUETA_AREA[item.area]}</td>
                   <td className="px-3 py-2 text-slate-800">{item.detalle}</td>
                   <td className="px-3 py-2 text-slate-600">{item.cantidad}</td>
-                  {tieneAccesoMontos &&
+                  {(tieneAccesoMontos || tieneAccesoPrecioVenta) &&
                     (item.provisto_por_cliente ? (
-                      <td className="px-3 py-2 text-xs font-medium text-amber-700" colSpan={3}>
+                      <td className="px-3 py-2 text-xs font-medium text-amber-700" colSpan={columnasMontos}>
                         Cliente lo trae · no se valoriza
                       </td>
                     ) : (
                       <>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            defaultValue={item.costo_unitario ?? ''}
-                            onBlur={(evento) => actualizarPrecioItem(item.id, 'costo_unitario', evento.target.value)}
-                            className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            defaultValue={item.precio_unitario ?? ''}
-                            onBlur={(evento) => actualizarPrecioItem(item.id, 'precio_unitario', evento.target.value)}
-                            className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
-                          />
-                          {item.hallazgo_precio_referencial != null && (
-                            <p className={`mt-1 text-xs ${precioSeAlejaDelReferencial(item) ? 'font-medium text-amber-700' : 'text-slate-400'}`}>
-                              Ref: {formatoMoneda(item.hallazgo_precio_referencial)}
-                              {precioSeAlejaDelReferencial(item) && ' ⚠ se aleja del referencial'}
-                            </p>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-slate-800">{formatoMoneda(item.total_linea)}</td>
+                        {tieneAccesoMontos && (
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              defaultValue={item.costo_unitario ?? ''}
+                              onBlur={(evento) => actualizarPrecioItem(item.id, 'costo_unitario', evento.target.value)}
+                              className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                            />
+                          </td>
+                        )}
+                        {tieneAccesoPrecioVenta && (
+                          <td className="px-3 py-2">
+                            {tieneAccesoMontos ? (
+                              <input
+                                type="number"
+                                defaultValue={item.precio_unitario ?? ''}
+                                onBlur={(evento) => actualizarPrecioItem(item.id, 'precio_unitario', evento.target.value)}
+                                className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                              />
+                            ) : (
+                              <span className="text-slate-800">{formatoMoneda(item.precio_unitario)}</span>
+                            )}
+                            {tieneAccesoMontos && item.hallazgo_precio_referencial != null && (
+                              <p className={`mt-1 text-xs ${precioSeAlejaDelReferencial(item) ? 'font-medium text-amber-700' : 'text-slate-400'}`}>
+                                Ref: {formatoMoneda(item.hallazgo_precio_referencial)}
+                                {precioSeAlejaDelReferencial(item) && ' ⚠ se aleja del referencial'}
+                              </p>
+                            )}
+                          </td>
+                        )}
+                        {tieneAccesoPrecioVenta && <td className="px-3 py-2 text-slate-800">{formatoMoneda(item.total_linea)}</td>}
                       </>
                     ))}
                   <td className="px-3 py-2">
@@ -625,7 +654,7 @@ function TrabajoDetalle() {
               ))}
               {detalle.length === 0 && (
                 <tr>
-                  <td colSpan={tieneAccesoMontos ? 7 : 4} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={4 + columnasMontos} className="px-3 py-6 text-center text-slate-400">
                     Todavía no hay ítems para valorizar.
                   </td>
                 </tr>
