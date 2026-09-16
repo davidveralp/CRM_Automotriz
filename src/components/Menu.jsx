@@ -53,6 +53,9 @@ function Menu() {
           <NavLink to="/presupuestos" className={claseEnlace}>
             Presupuestos
           </NavLink>
+          <NavLink to="/cuentas-por-cobrar" className={claseEnlace}>
+            Cuentas por cobrar
+          </NavLink>
           <NavLink to="/bodega" className={claseEnlace}>
             Bodega
           </NavLink>

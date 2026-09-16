@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import { invocarFuncion } from '../lib/invocarFuncion'
+import FirmaCanvas from '../components/FirmaCanvas'
 
 const ETIQUETA_AREA = {
   mano_obra: 'Mano de obra',
@@ -70,6 +71,16 @@ function TrabajoDetalle() {
 
   const [generandoPresupuesto, setGenerandoPresupuesto] = useState(false)
   const [numeroDocumento, setNumeroDocumento] = useState('')
+  const [tipoDocumento, setTipoDocumento] = useState('')
+  const [estadoPago, setEstadoPago] = useState('pagado')
+  const [fechaVencimiento, setFechaVencimiento] = useState('')
+  const [retiradoPorNombre, setRetiradoPorNombre] = useState('')
+  const [retiradoPorRut, setRetiradoPorRut] = useState('')
+  const [retiradoPorContacto, setRetiradoPorContacto] = useState('')
+  const [comentarioEgreso, setComentarioEgreso] = useState('')
+  const [observacionesCierre, setObservacionesCierre] = useState('')
+  const [firmaEgresoPng, setFirmaEgresoPng] = useState(null)
+  const [datosEgresoPrecargados, setDatosEgresoPrecargados] = useState(false)
   const [cerrando, setCerrando] = useState(false)
 
   const [sincronizando, setSincronizando] = useState(false)
@@ -88,7 +99,7 @@ function TrabajoDetalle() {
       ] = await Promise.all([
         supabase
           .from('trabajos_taller')
-          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, numero_documento_facturacion, fecha_entrega, clientes(nombre, apellido, razon_social, telefono_norm), vehiculos(patente, marca, modelo, anio)')
+          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, numero_documento_facturacion, tipo_documento, estado_pago, fecha_vencimiento_pago, fecha_entrega, clientes(nombre, apellido, razon_social, rut, tipo, telefono, telefono_norm), vehiculos(patente, marca, modelo, anio)')
           .eq('id', id)
           .maybeSingle(),
         supabase
@@ -130,6 +141,18 @@ function TrabajoDetalle() {
     cargarTodo()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // Precarga los datos de "quien retira" con el cliente registrado -el
+  // asesor los corrige si en realidad retira otra persona (conductor)-,
+  // solo una vez para no pisar lo que el asesor ya haya escrito.
+  useEffect(() => {
+    if (trabajo && !datosEgresoPrecargados) {
+      setRetiradoPorNombre(nombreCliente(trabajo.clientes))
+      setRetiradoPorRut(trabajo.clientes?.rut || '')
+      setRetiradoPorContacto(trabajo.clientes?.telefono || '')
+      setDatosEgresoPrecargados(true)
+    }
+  }, [trabajo, datosEgresoPrecargados])
 
   async function agregarTarea(evento) {
     evento.preventDefault()
@@ -275,11 +298,18 @@ function TrabajoDetalle() {
     setCerrando(true)
     setError(null)
     try {
+      const tipoDocumentoFinal = numeroDocumento ? tipoDocumento || null : null
+      const esFacturaPendiente = tipoDocumentoFinal === 'factura' && estadoPago === 'pendiente'
+
       const { error: errorCierre } = await supabase
         .from('trabajos_taller')
         .update({
           estado: 'entregado',
           numero_documento_facturacion: numeroDocumento || null,
+          tipo_documento: tipoDocumentoFinal,
+          estado_pago: tipoDocumentoFinal === 'factura' ? estadoPago : tipoDocumentoFinal ? 'pagado' : null,
+          fecha_vencimiento_pago: esFacturaPendiente ? fechaVencimiento || null : null,
+          fecha_pago: esFacturaPendiente ? null : tipoDocumentoFinal ? new Date().toISOString() : null,
           fecha_entrega: new Date().toISOString(),
           entregado_por: usuario.id,
         })
@@ -289,6 +319,23 @@ function TrabajoDetalle() {
         setError(errorCierre.message)
         return
       }
+
+      const { error: errorEgreso } = await supabase.from('egresos_vehiculo').insert({
+        trabajo_id: id,
+        retirado_por_nombre: retiradoPorNombre || null,
+        retirado_por_rut: retiradoPorRut || null,
+        retirado_por_contacto: retiradoPorContacto || null,
+        comentario: comentarioEgreso || null,
+        observaciones_cierre: observacionesCierre || null,
+        firma_png: firmaEgresoPng,
+        firmado_en: firmaEgresoPng ? new Date().toISOString() : null,
+      })
+
+      if (errorEgreso) {
+        setError(errorEgreso.message)
+        return
+      }
+
       await cargarTodo()
     } catch {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
@@ -667,10 +714,22 @@ function TrabajoDetalle() {
       <section className="mt-8 max-w-md">
         <h2 className="mb-2 text-lg font-semibold text-slate-900">Cierre</h2>
         {trabajo.estado === 'entregado' ? (
-          <p className="rounded border border-green-300 bg-green-50 p-3 text-sm text-green-900">
-            Entregado{trabajo.numero_documento_facturacion ? ` · Documento ${trabajo.numero_documento_facturacion}` : ''}
-            {trabajo.fecha_entrega ? ` · ${new Date(trabajo.fecha_entrega).toLocaleString('es-CL')}` : ''}
-          </p>
+          <div className="rounded border border-green-300 bg-green-50 p-3 text-sm text-green-900">
+            <p>
+              Entregado
+              {trabajo.numero_documento_facturacion &&
+                ` · ${trabajo.tipo_documento === 'factura' ? 'Factura' : trabajo.tipo_documento === 'boleta' ? 'Boleta' : 'Documento'} ${trabajo.numero_documento_facturacion}`}
+              {trabajo.fecha_entrega ? ` · ${new Date(trabajo.fecha_entrega).toLocaleString('es-CL')}` : ''}
+            </p>
+            {trabajo.tipo_documento === 'factura' && (
+              <p className="mt-1">
+                Pago: {trabajo.estado_pago === 'pendiente' ? `Pendiente, vence ${trabajo.fecha_vencimiento_pago || 'sin fecha'}` : 'Pagada'}
+              </p>
+            )}
+            <Link to={`/trabajos/${id}/egreso`} className="mt-2 inline-block underline hover:text-green-700">
+              Ver Orden de Egreso
+            </Link>
+          </div>
         ) : (
           <form onSubmit={cerrarTrabajo} className="rounded border border-slate-200 bg-white p-3">
             <label className="mb-1 block text-sm font-medium text-slate-700">N° de documento (Dimasoft)</label>
@@ -680,6 +739,99 @@ function TrabajoDetalle() {
               placeholder="Boleta o factura emitida"
               className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
             />
+
+            {numeroDocumento && (
+              <div className="mb-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Tipo de documento</label>
+                <select
+                  value={tipoDocumento}
+                  onChange={(evento) => setTipoDocumento(evento.target.value)}
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Selecciona…</option>
+                  <option value="boleta">Boleta</option>
+                  <option value="factura">Factura</option>
+                </select>
+              </div>
+            )}
+
+            {numeroDocumento && tipoDocumento === 'factura' && (
+              <div className="mb-2 rounded border border-slate-200 p-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Estado del pago</label>
+                <div className="mb-2 flex gap-4 text-sm">
+                  <label className="flex items-center gap-1">
+                    <input type="radio" checked={estadoPago === 'pagado'} onChange={() => setEstadoPago('pagado')} />
+                    Pagada ahora
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <input type="radio" checked={estadoPago === 'pendiente'} onChange={() => setEstadoPago('pendiente')} />
+                    Pendiente
+                  </label>
+                </div>
+                {estadoPago === 'pendiente' && (
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">Vence el</label>
+                    <input
+                      type="date"
+                      value={fechaVencimiento}
+                      onChange={(evento) => setFechaVencimiento(evento.target.value)}
+                      className="rounded border border-slate-300 px-3 py-2 text-sm"
+                    />
+                    <p className="mt-1 text-xs text-amber-700">Va a aparecer en Cuentas por cobrar hasta que se marque pagada.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mb-2 grid grid-cols-3 gap-2">
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Quien retira</label>
+                <input
+                  value={retiradoPorNombre}
+                  onChange={(evento) => setRetiradoPorNombre(evento.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">RUT</label>
+                <input
+                  value={retiradoPorRut}
+                  onChange={(evento) => setRetiradoPorRut(evento.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Contacto</label>
+                <input
+                  value={retiradoPorContacto}
+                  onChange={(evento) => setRetiradoPorContacto(evento.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+            </div>
+
+            <label className="mb-1 block text-sm font-medium text-slate-700">Observaciones de cierre</label>
+            <textarea
+              value={observacionesCierre}
+              onChange={(evento) => setObservacionesCierre(evento.target.value)}
+              rows={2}
+              placeholder="Ej. hallazgos confirmados, pendientes para la próxima visita"
+              className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            />
+
+            <label className="mb-1 block text-sm font-medium text-slate-700">Comentario</label>
+            <textarea
+              value={comentarioEgreso}
+              onChange={(evento) => setComentarioEgreso(evento.target.value)}
+              rows={2}
+              className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            />
+
+            <label className="mb-1 block text-sm font-medium text-slate-700">Firma de conformidad al retiro</label>
+            <div className="mb-2">
+              <FirmaCanvas onCambio={setFirmaEgresoPng} />
+            </div>
+
             <button
               type="submit"
               disabled={cerrando}

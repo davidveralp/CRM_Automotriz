@@ -20,6 +20,8 @@ import Bodega from './pages/Bodega'
 import TallerIslas from './pages/TallerIslas'
 import Presupuestos from './pages/Presupuestos'
 import PresupuestoDetalle from './pages/PresupuestoDetalle'
+import OrdenEgreso from './pages/OrdenEgreso'
+import CuentasPorCobrar from './pages/CuentasPorCobrar'
 import PuntoVenta from './pages/PuntoVenta'
 
 function Layout({ children }) {
@@ -75,6 +77,14 @@ function App() {
               'jefe_taller',
               'asesor',
             ])}
+          />
+          <Route
+            path="/trabajos/:id/egreso"
+            element={paginaProtegida(<OrdenEgreso />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller', 'asesor'])}
+          />
+          <Route
+            path="/cuentas-por-cobrar"
+            element={paginaProtegida(<CuentasPorCobrar />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller', 'asesor'])}
           />
           <Route path="/informes" element={paginaProtegida(<Informes />, ['admin', 'socia'])} />
           <Route

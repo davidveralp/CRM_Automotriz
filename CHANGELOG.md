@@ -1,5 +1,26 @@
 # Registro de cambios
 
+## 2026-09-16 — Orden de Egreso combinada + Cuentas por Cobrar
+
+**Qué se entrega:** el cliente compartió los dos papeles reales que se entregan al retirar el vehículo -"Egreso del Vehículo" (quién retira, garantías, hora de salida, firma) y la "Orden de Trabajo" cerrada (mano de obra/repuestos/insumos con su total)- y pidió combinarlos en un solo documento ("Orden de Egreso"), emitido al cerrar y cobrar la OT, con tipo de documento (boleta/factura), un círculo azul/verde según el cliente sea empresa o particular, y registro de facturas pendientes de pago en un módulo nuevo de Cuentas por Cobrar.
+
+### Modelo de datos (`0020_egreso_vehiculo.sql`)
+- `trabajos_taller`: `tipo_documento` (boleta/factura, NULL si se cierra sin documento), `estado_pago` (solo aplica a factura -la boleta se considera pagada al cerrar, venta al contado-), `fecha_vencimiento_pago`, `fecha_pago`.
+- Tabla nueva `egresos_vehiculo` (mismo patrón que `inspecciones_ingreso`: un registro por OT, en el cierre): quién retira (puede no ser el cliente registrado), comentario, observaciones de cierre, firma.
+- **Decisión de seguridad tomada con el cliente:** el documento que recibe el cliente NUNCA muestra costo (solo cantidad/precio/total) -el papel de referencia sí lo mostraba, pero eso filtraría el margen del taller-.
+
+### El formulario de cierre ahora pide
+N° de documento → tipo (boleta/factura, solo si hay número) → si es factura, pagada ahora o pendiente (con fecha de vencimiento a mano, sin plazo fijo) → quién retira/RUT/contacto (precargado con el cliente registrado, editable) → observaciones de cierre → comentario → firma de conformidad al retiro.
+
+### Documento nuevo: Orden de Egreso (`/trabajos/:id/egreso`)
+Combina el encabezado de empresa, un círculo de color (azul = cliente empresa, verde = cliente particular), los datos de cliente/vehículo, los ítems **aceptados** agrupados por área con su TOTAL, la línea de "Factura/Boleta N°... · estado de pago" (omitida si se cerró sin documento), el texto legal de "Egreso del Vehículo" (garantías, hora de salida) copiado del papel real, y la firma.
+
+### Módulo nuevo: Cuentas por Cobrar (`/cuentas-por-cobrar`)
+Lista de todas las facturas (no boletas, que se consideran pagadas al cerrar), filtrable por pendiente/pagada/todas, con el total adeudado arriba, fecha de vencimiento marcada en rojo si está vencida, y botón "Marcar pagada" que registra `fecha_pago`.
+
+### Probado de punta a punta (con un incidente de sesión, no de código)
+Al reiniciar el servidor de desarrollo a mitad de las pruebas, una OT cerrada con factura guardó todos los campos nuevos en `null` -el formulario se veía bien en pantalla pero el cierre se guardó vacío-. Se investigó a fondo (datos correctos en cada input, sin errores de consola, la query manual funcionaba) antes de concluir que fue un artefacto del reinicio del servidor a mitad de sesión de pruebas (Vite reconectando/recargando la pestaña repetidas veces), no un bug real: se repitió la prueba completa con una OT nueva contra el servidor ya estable y todo se guardó correcto. **Lección para la próxima vez que haga falta reiniciar el dev server a mitad de una prueba: verificar que la consola ya no muestre "reconectando" antes de seguir interactuando con el formulario.** Con el servidor estable: OT con factura pendiente cerrada → Orden de Egreso mostró el círculo azul (cliente empresa) y la línea de factura pendiente correctamente → apareció en Cuentas por Cobrar → "Marcar pagada" la movió a pagada. Datos de prueba limpiados (OT 14016, OT 14017, cliente "PruebaEgreso SPA", vehículo "PRUE14"); ninguna se sincronizó con ClickUp.
+
 ## 2026-09-16 — El asesor ve precio (no costo) de los presupuestos + botón de WhatsApp
 
 **Qué se entrega:** el cliente recordó una regla de negocio central que el módulo de Presupuestos de hoy no respetaba: "el asesor es el único que tiene contacto con el cliente en todo momento. Él envía y negocia los presupuestos gestionados". El asesor quedaba fuera de `tiene_acceso_montos()` -correcto para el costo/margen, pero un problema real para negociar un precio que no podía ver-.
