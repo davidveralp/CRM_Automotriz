@@ -529,7 +529,15 @@ function TrabajoDetalle() {
 
         {presupuestos.length > 0 && (
           <p className="mb-2 text-sm text-slate-500">
-            Presupuestos: {presupuestos.map((p) => `${p.correlativo} (${p.estado})`).join(' · ')}
+            Presupuestos:{' '}
+            {presupuestos.map((p, indice) => (
+              <span key={p.id}>
+                {indice > 0 && ' · '}
+                <Link to={`/presupuestos/${p.id}`} className="underline hover:text-slate-700">
+                  {p.correlativo} ({p.estado})
+                </Link>
+              </span>
+            ))}
           </p>
         )}
 

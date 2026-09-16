@@ -18,6 +18,8 @@ import Agenda from './pages/Agenda'
 import Informes from './pages/Informes'
 import Bodega from './pages/Bodega'
 import TallerIslas from './pages/TallerIslas'
+import Presupuestos from './pages/Presupuestos'
+import PresupuestoDetalle from './pages/PresupuestoDetalle'
 import PuntoVenta from './pages/PuntoVenta'
 
 function Layout({ children }) {
@@ -59,6 +61,14 @@ function App() {
           <Route
             path="/taller"
             element={paginaProtegida(<TallerIslas />, ['admin', 'socia', 'jefe_taller'])}
+          />
+          <Route
+            path="/presupuestos"
+            element={paginaProtegida(<Presupuestos />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller'])}
+          />
+          <Route
+            path="/presupuestos/:id"
+            element={paginaProtegida(<PresupuestoDetalle />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller'])}
           />
           <Route path="/informes" element={paginaProtegida(<Informes />, ['admin', 'socia'])} />
           <Route

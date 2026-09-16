@@ -1,5 +1,17 @@
 # Registro de cambios
 
+## 2026-09-16 — Módulo de Presupuestos (lista, documento real, seguimiento)
+
+**Qué se entrega:** el cliente compartió el formato real de "Presupuesto" (Dimasoft) y pidió un módulo dedicado -tarea del encargado de adquisiciones (Víctor Tello, rol `encargado_presupuestos`)- con comunicación con las OTs y seguimiento de estado.
+
+**Punto de partida importante:** el sistema ya tenía `presupuestos_taller` desde el Bloque 5 (correlativo P-00001, estados borrador/enviado/aceptado/parcial/rechazado/anulado) y un botón "Generar presupuesto" en cada OT que agrupa los ítems ya valorizados. Pero era un stub: sin documento imprimible y **sin ninguna forma de cambiar el estado** (nacía en "enviado" -el propio botón ya lo marca así al crearlo- y ahí se quedaba para siempre). No hizo falta ninguna migración: todas las columnas necesarias ya existían.
+
+- **Página nueva `/presupuestos`** (lista de TODOS los presupuestos de todas las OTs, filtrable por estado, con aviso de cuántos están "enviado · esperando respuesta") — el "módulo" y el "seguimiento" real que pidió el cliente, en vez de tener que entrar OT por OT.
+- **Página nueva `/presupuestos/:id`**: documento imprimible con el formato real (encabezado empresa, N° de presupuesto/fecha, patente/RUT/nombre cliente/color/año/marca/modelo, "Cliente Solicita" -mismo campo agregado ayer en `inspecciones_ingreso`, con el fallback exacto "Presupuesto creado sin solicitud." cuando está vacío-, ítems por área con CÓDIGO/DETALLE/CANTIDAD/PRECIO/TOTAL y subtotal, Mano de Obra con solo DETALLE/TOTAL, y NETO/I.V.A./TOTAL calculados de vuelta desde el total con IVA incluido: `neto = total/1.19`, `iva = total - neto`) + botones para avanzar el estado (aceptado/parcial/rechazado/anulado, con `fecha_respuesta` auto-registrada) y revertir por si hay un error.
+- Los enlaces a presupuestos en `TrabajoDetalle.jsx` (línea "Presupuestos: P-00002 (enviado)") ahora apuntan al documento nuevo.
+- Acceso restringido a `admin`/`socia`/`encargado_presupuestos`/`jefe_taller` (mismo grupo que ya ve montos desde el Bloque 5), consistente con Informes/Bodega.
+- Probado de punta a punta con los mismos datos del PDF de referencia (repuesto $130.000, dos lubricantes $9.000/$5.000, mano de obra $47.600): el documento generado dio **exactamente** NETO $161.008, I.V.A. $30.592, TOTAL $191.600 -mismos números que el papel real-. Se probó también la transición de estado (enviado → aceptado, con fecha de respuesta registrada). Datos de prueba limpiados (OT 14014, cliente "PruebaPresupuesto Modulo", vehículo "PRUE12"); no se sincronizó con ClickUp así que no quedó nada que borrar ahí.
+
 ## 2026-09-15 — Taller por islas, formato real de Orden de Trabajo, y prueba de proceso completo
 
 **Qué se entrega:** tres pedidos seguidos del cliente, todos probados en vivo contra producción (ClickUp y Brevo reales).
