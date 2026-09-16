@@ -1,5 +1,14 @@
 # Registro de cambios
 
+## 2026-09-16 — Kilometraje de salida en el cierre (`0021_kilometraje_egreso.sql`)
+
+El kilometraje que se pide en el ingreso puede no ser el mismo al momento de retirar el vehículo (pruebas en ruta, traslados a servicios externos). El cliente pidió volver a pedirlo al cerrar, igual que lo muestra el papel real de "Egreso del Vehículo".
+
+- `egresos_vehiculo.kilometraje_egreso` (nueva columna) capturado en el formulario de cierre, junto a un aviso si es menor al último kilometraje registrado -mismo patrón que el aviso de kilometraje del ingreso (Bloque 3)-.
+- Al cerrar, además de guardarse en `egresos_vehiculo`, actualiza `vehiculos.kilometraje` -mismo criterio que ya usa `NuevoIngreso.jsx`: ese campo siempre refleja la última lectura conocida del odómetro-.
+- El documento de Orden de Egreso ahora muestra este kilometraje de salida (con reintento al kilometraje general del vehículo si una OT vieja no lo tiene, por cerrarse antes de este cambio).
+- Probado de punta a punta: OT con kilometraje de ingreso 50.000, cerrada con kilometraje de salida 50.120 → quedó guardado en `egresos_vehiculo` y actualizado en `vehiculos.kilometraje` → el documento de egreso mostró 50.120, no el de ingreso. Datos de prueba limpiados (OT 14018, cliente "PruebaKmEgreso", vehículo "PRUE15").
+
 ## 2026-09-16 — Orden de Egreso combinada + Cuentas por Cobrar
 
 **Qué se entrega:** el cliente compartió los dos papeles reales que se entregan al retirar el vehículo -"Egreso del Vehículo" (quién retira, garantías, hora de salida, firma) y la "Orden de Trabajo" cerrada (mano de obra/repuestos/insumos con su total)- y pidió combinarlos en un solo documento ("Orden de Egreso"), emitido al cerrar y cobrar la OT, con tipo de documento (boleta/factura), un círculo azul/verde según el cliente sea empresa o particular, y registro de facturas pendientes de pago en un módulo nuevo de Cuentas por Cobrar.

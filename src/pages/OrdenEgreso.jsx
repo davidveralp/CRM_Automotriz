@@ -66,7 +66,7 @@ function OrdenEgreso() {
         supabase.from('inspecciones_ingreso').select('cliente_solicita').eq('trabajo_id', id).maybeSingle(),
         supabase
           .from('egresos_vehiculo')
-          .select('retirado_por_nombre, retirado_por_rut, retirado_por_contacto, comentario, observaciones_cierre, firma_png')
+          .select('retirado_por_nombre, retirado_por_rut, retirado_por_contacto, comentario, observaciones_cierre, kilometraje_egreso, firma_png')
           .eq('trabajo_id', id)
           .maybeSingle(),
         supabase
@@ -177,7 +177,7 @@ function OrdenEgreso() {
           </div>
           <div className="flex justify-between">
             <p>Patente: {trabajo.vehiculos?.patente}</p>
-            <p>Kilometraje: {trabajo.vehiculos?.kilometraje || ''}</p>
+            <p>Kilometraje: {egreso?.kilometraje_egreso || trabajo.vehiculos?.kilometraje || ''}</p>
           </div>
         </div>
 

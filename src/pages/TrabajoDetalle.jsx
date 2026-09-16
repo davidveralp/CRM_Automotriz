@@ -79,6 +79,8 @@ function TrabajoDetalle() {
   const [retiradoPorContacto, setRetiradoPorContacto] = useState('')
   const [comentarioEgreso, setComentarioEgreso] = useState('')
   const [observacionesCierre, setObservacionesCierre] = useState('')
+  const [kilometrajeEgreso, setKilometrajeEgreso] = useState('')
+  const [avisoKmEgreso, setAvisoKmEgreso] = useState(null)
   const [firmaEgresoPng, setFirmaEgresoPng] = useState(null)
   const [datosEgresoPrecargados, setDatosEgresoPrecargados] = useState(false)
   const [cerrando, setCerrando] = useState(false)
@@ -99,7 +101,7 @@ function TrabajoDetalle() {
       ] = await Promise.all([
         supabase
           .from('trabajos_taller')
-          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, numero_documento_facturacion, tipo_documento, estado_pago, fecha_vencimiento_pago, fecha_entrega, clientes(nombre, apellido, razon_social, rut, tipo, telefono, telefono_norm), vehiculos(patente, marca, modelo, anio)')
+          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, numero_documento_facturacion, tipo_documento, estado_pago, fecha_vencimiento_pago, fecha_entrega, vehiculo_id, clientes(nombre, apellido, razon_social, rut, tipo, telefono, telefono_norm), vehiculos(patente, marca, modelo, anio, kilometraje)')
           .eq('id', id)
           .maybeSingle(),
         supabase
@@ -320,6 +322,8 @@ function TrabajoDetalle() {
         return
       }
 
+      const kilometrajeEgresoNumero = kilometrajeEgreso ? Number(kilometrajeEgreso) : null
+
       const { error: errorEgreso } = await supabase.from('egresos_vehiculo').insert({
         trabajo_id: id,
         retirado_por_nombre: retiradoPorNombre || null,
@@ -327,6 +331,7 @@ function TrabajoDetalle() {
         retirado_por_contacto: retiradoPorContacto || null,
         comentario: comentarioEgreso || null,
         observaciones_cierre: observacionesCierre || null,
+        kilometraje_egreso: kilometrajeEgresoNumero,
         firma_png: firmaEgresoPng,
         firmado_en: firmaEgresoPng ? new Date().toISOString() : null,
       })
@@ -334,6 +339,15 @@ function TrabajoDetalle() {
       if (errorEgreso) {
         setError(errorEgreso.message)
         return
+      }
+
+      if (kilometrajeEgresoNumero !== null && trabajo.vehiculo_id) {
+        if (trabajo.vehiculos?.kilometraje && kilometrajeEgresoNumero < trabajo.vehiculos.kilometraje) {
+          setAvisoKmEgreso(
+            `El kilometraje de salida (${kilometrajeEgresoNumero}) es menor al último registrado (${trabajo.vehiculos.kilometraje}). Se guardó igual; revisa si hay un error de tipeo.`
+          )
+        }
+        await supabase.from('vehiculos').update({ kilometraje: kilometrajeEgresoNumero }).eq('id', trabajo.vehiculo_id)
       }
 
       await cargarTodo()
@@ -782,6 +796,17 @@ function TrabajoDetalle() {
                 )}
               </div>
             )}
+
+            <div className="mb-2">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Kilometraje de salida</label>
+              <input
+                type="number"
+                value={kilometrajeEgreso}
+                onChange={(evento) => setKilometrajeEgreso(evento.target.value)}
+                className="w-full max-w-xs rounded border border-slate-300 px-3 py-2 text-sm"
+              />
+              {avisoKmEgreso && <p className="mt-1 text-xs text-amber-700">{avisoKmEgreso}</p>}
+            </div>
 
             <div className="mb-2 grid grid-cols-3 gap-2">
               <div>
