@@ -82,19 +82,44 @@ const DISTRIBUCION_HATCHBACK = [
 
 const DISTRIBUCIONES = { hatchback: DISTRIBUCION_HATCHBACK }
 
-// Recorta una región de la imagen completa vía background-size/position en
-// vez de servir 15 archivos sueltos: menos peso, y el recorte se define acá
-// como dato (RECUADROS), no repitiendo la imagen por vista.
-function estiloRecorte(imagen, caja) {
+// Recorta una región de la imagen completa posicionando un <img> real más
+// grande que su contenedor (con overflow:hidden), en vez de background-image
+// -que Chrome/el motor de impresión no imprime a menos que la persona tenga
+// activado "Gráficos de fondo" al exportar a PDF-. Con un <img> de verdad el
+// recorte se ve siempre, tanto en pantalla como al imprimir.
+function estiloImagenRecortada(caja) {
   const anchoFraccion = caja.x1 - caja.x0
   const altoFraccion = caja.y1 - caja.y0
   return {
-    backgroundImage: `url(${imagen})`,
-    backgroundRepeat: 'no-repeat',
-    backgroundSize: `${(1 / anchoFraccion) * 100}% ${(1 / altoFraccion) * 100}%`,
-    backgroundPosition: `${(caja.x0 / (1 - anchoFraccion)) * 100}% ${(caja.y0 / (1 - altoFraccion)) * 100}%`,
-    aspectRatio: `${anchoFraccion} / ${altoFraccion}`,
+    width: `${(1 / anchoFraccion) * 100}%`,
+    height: `${(1 / altoFraccion) * 100}%`,
+    left: `${-(caja.x0 / anchoFraccion) * 100}%`,
+    top: `${-(caja.y0 / altoFraccion) * 100}%`,
+    maxWidth: 'none',
   }
+}
+
+// Las 5 vistas tienen proporciones muy distintas entre sí (la superior es
+// ancha, las laterales aún más, frontal/posterior casi cuadradas). Para que
+// las 5 se vean del mismo tamaño de recuadro sin deformar el dibujo, el
+// recuadro de cada vista se ajusta -como "object-fit: contain"- dentro de un
+// recuadro fijo (BOX_ANCHO x BOX_ALTO): se calcula a mano cuál lado manda
+// (ancho o alto) en vez de dejarlo en manos de aspect-ratio solo, porque un
+// elemento sin contenido propio (todo el dibujo va en un <img> absoluto
+// adentro) no tiene un tamaño "natural" del que el navegador pueda partir.
+const BOX_ANCHO = 160
+const BOX_ALTO = 112
+
+function estiloContenedorRecorte(caja) {
+  const anchoFraccion = caja.x1 - caja.x0
+  const altoFraccion = caja.y1 - caja.y0
+  const relacionCrop = anchoFraccion / altoFraccion
+  const relacionCaja = BOX_ANCHO / BOX_ALTO
+  const base = { aspectRatio: `${anchoFraccion} / ${altoFraccion}` }
+  if (relacionCrop >= relacionCaja) {
+    return { ...base, width: '100%', height: 'auto' }
+  }
+  return { ...base, height: '100%', width: 'auto' }
 }
 
 function DiagramaVehiculo({ tipo, marcas, onCambio, soloLectura }) {
@@ -125,34 +150,54 @@ function DiagramaVehiculo({ tipo, marcas, onCambio, soloLectura }) {
   return (
     <div>
       <div className="grid grid-cols-2 gap-3">
-        {vistas.map((vista) => (
-          <div key={vista.clave} className={vista.ancho}>
-            <p className="mb-1 text-xs text-slate-500">{vista.etiqueta}</p>
-            <div
-              className="relative cursor-crosshair rounded border border-slate-200 bg-white"
-              style={estiloRecorte(imagen, recuadros[vista.clave])}
-              onClick={(evento) => manejarClick(vista.clave, evento)}
-            >
-              {marcas.map((marca, indice) =>
-                marca.vista === vista.clave ? (
-                  <button
-                    key={indice}
-                    type="button"
-                    onClick={(evento) => {
-                      evento.stopPropagation()
-                      if (!soloLectura) setVistaActiva(indice)
-                    }}
-                    title={marca.nota || `Marca ${indice + 1}`}
-                    className="absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white ring-2 ring-white"
-                    style={{ left: `${marca.x * 100}%`, top: `${marca.y * 100}%` }}
-                  >
-                    {indice + 1}
-                  </button>
-                ) : null
-              )}
+        {vistas.map((vista) => {
+          const caja = recuadros[vista.clave]
+          return (
+            <div key={vista.clave} className={vista.ancho}>
+              <p className="mb-1 text-xs text-slate-500">{vista.etiqueta}</p>
+              {/* Recuadro de tamaño fijo e igual para las 5 vistas -las cajas
+                  detectadas tienen proporciones distintas entre sí, así que
+                  el recorte se ajusta (como "object-fit: contain") dentro de
+                  este recuadro en vez de estirarlo, para no deformar ni
+                  recortar de más el dibujo. */}
+              <div
+                className="mx-auto flex items-center justify-center rounded border border-slate-200 bg-white"
+                style={{ width: BOX_ANCHO, height: BOX_ALTO }}
+              >
+                <div
+                  className="relative cursor-crosshair overflow-hidden"
+                  style={estiloContenedorRecorte(caja)}
+                  onClick={(evento) => manejarClick(vista.clave, evento)}
+                >
+                  <img
+                    src={imagen}
+                    alt={vista.etiqueta}
+                    draggable={false}
+                    className="absolute select-none"
+                    style={estiloImagenRecortada(caja)}
+                  />
+                  {marcas.map((marca, indice) =>
+                    marca.vista === vista.clave ? (
+                      <button
+                        key={indice}
+                        type="button"
+                        onClick={(evento) => {
+                          evento.stopPropagation()
+                          if (!soloLectura) setVistaActiva(indice)
+                        }}
+                        title={marca.nota || `Marca ${indice + 1}`}
+                        className="absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white ring-2 ring-white"
+                        style={{ left: `${marca.x * 100}%`, top: `${marca.y * 100}%` }}
+                      >
+                        {indice + 1}
+                      </button>
+                    ) : null
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {marcas.length > 0 && (

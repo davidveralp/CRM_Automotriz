@@ -227,12 +227,7 @@ function OrdenEgreso() {
         </div>
 
         <div className="mb-3 border-b border-slate-300 pb-3">
-          <p>
-            Cliente/Quien Retira: {egreso?.retirado_por_nombre || nombreCliente(trabajo.clientes)} &nbsp;&nbsp; Rut:{' '}
-            {egreso?.retirado_por_rut || ''}
-          </p>
-          <p>Contacto: {egreso?.retirado_por_contacto || ''}</p>
-          <p className="mt-2 text-xs">
+          <p className="text-xs">
             Recibo el vehículo en plena satisfacción respecto a los servicios realizados por {empresa?.nombre || 'la empresa'}, he
             revisado las pertenencias y detalles de carrocería indicadas en la orden de ingreso dejando excluida a{' '}
             {empresa?.nombre || 'la empresa'} de cualquier reclamo excepto si hay garantías.

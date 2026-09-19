@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2026-09-19 — Impresión del diagrama de daños + limpieza de documentos
+
+**Qué se entrega:** revisando el formato ya unificado de los 3 documentos, el cliente encontró tres problemas concretos: el diagrama de daños no se veía al exportar a PDF, las marcas rojas tampoco, y un bloque de datos redundante en la Orden de Egreso.
+
+- **El diagrama no se imprimía**: se dibujaba con `background-image` (CSS), y Chrome no imprime fondos a menos que la persona tenga activado "Gráficos de fondo" al exportar a PDF -ajuste que casi nadie activa-. Se reemplazó por un `<img>` real posicionado con recorte (mismo resultado visual, pero un `<img>` siempre se imprime, no depende de esa opción del navegador).
+- **Las marcas rojas tampoco se imprimían** (mismo motivo: `background-color`). En vez de parchar cada elemento con color de fondo uno por uno, se agregó una regla `@media print { * { print-color-adjust: exact } }` global en `index.css` -cubre cualquier color de fondo dentro de un documento impreso del sitio, presente o futuro, en un solo lugar-.
+- **Tamaños de recuadro parejos**: las 5 vistas tienen proporciones muy distintas entre sí (la superior es ancha, las laterales aún más). Antes cada recuadro se ajustaba a la proporción natural de su vista, dando cajas de tamaños dispares; ahora las 5 comparten un recuadro fijo (160×112) y el recorte se ajusta adentro tipo "object-fit: contain" -sin deformar ni cortar el dibujo-. **Encontrado y corregido un bug propio en el primer intento:** fijar `height: 100%` a la vez que `aspect-ratio` en el mismo elemento hacía que las vistas laterales (más anchas) se desbordaran y quedaran cortadas por el `overflow: hidden`; la corrección calcula a mano cuál lado (ancho o alto) debe ser el 100% según la proporción de cada recorte, en vez de dejarlo en manos de una combinación de CSS ambigua.
+- Orden de Egreso: se quitó el bloque "Cliente/Quien Retira... Rut... Contacto", redundante con "Nombre Cliente"/"R.U.T." que ya muestra el encabezado de datos del cliente.
+- Probado de punta a punta con capturas reales del PDF exportado (no solo en pantalla): las 5 vistas se ven completas, del mismo tamaño, y la marca roja con su número visible. Datos de prueba limpiados (OT 14027/PRUE92, OT 14028/PRUE91, cliente "PruebaPDF Diagrama").
+
 ## 2026-09-19 — Encuesta de postventa detallada + alerta de respuestas negativas (`0025_encuesta_detallada.sql`)
 
 **Qué se entrega:** la encuesta de postventa (Bloque 7) solo pedía una calificación única 1-5. El cliente pidió desglosarla en 4 preguntas que cubren áreas distintas del negocio -tiempo de entrega, atención del asesor, servicio mecánico y una pregunta de recomendación que mezcla todo-, más "cómo conociste la empresa" y un espacio de sugerencias, y un tratamiento automático distinto según el resultado: negativo → avisarle a David e identificar la razón de fondo por área; positivo → agradecer la preferencia; excelente → invitar a dejar reseña en Google.

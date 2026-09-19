@@ -1,3 +1,17 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Chrome no imprime fondos/colores (background-color, box-shadow) a menos
+   que la persona tenga activado "Gráficos de fondo" al exportar a PDF -eso
+   dejaba invisibles, por ejemplo, el círculo rojo de una marca en el
+   diagrama de daños o el círculo azul/verde de tipo de cliente en la Orden
+   de Egreso-. Se fuerza acá, una sola vez para todo el sitio, en vez de
+   repetir la propiedad en cada componente que use un color de fondo dentro
+   de un documento impreso. */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
