@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import FirmaCanvas from '../components/FirmaCanvas'
 import DiagramaVehiculo from '../components/DiagramaVehiculo'
+import EncabezadoDocumento from '../components/EncabezadoDocumento'
 
 function normalizarPatenteLocal(patente) {
   return (patente || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -450,19 +451,11 @@ function NuevoIngreso() {
         </div>
 
         <div className="max-w-3xl rounded border border-slate-200 bg-white p-6 text-sm text-slate-900 print:border-0 print:p-0">
-          <div className="mb-2 flex items-start justify-between border-b border-slate-800 pb-2">
-            <div>
-              <p className="font-bold uppercase">{empresa?.nombre}</p>
-              <p>{empresa?.direccion}</p>
-              <p>{empresa?.correo}</p>
-              <p>{empresa?.telefono}</p>
-            </div>
-            <div className="text-right">
-              <p className="font-bold">ORDEN DE TRABAJO N° {otCreada.numero_ot}</p>
-              <p className="font-bold">FECHA: {fechaFormateada}</p>
-              <p className="mt-1 text-xs">Página: 1</p>
-            </div>
-          </div>
+          <EncabezadoDocumento
+            empresa={empresa}
+            lineas={[`ORDEN DE TRABAJO N° ${otCreada.numero_ot}`]}
+            fecha={fechaFormateada}
+          />
 
           <div className="mb-3 grid grid-cols-2 gap-x-6 border-b border-slate-300 pb-3">
             <div className="space-y-0.5">
@@ -508,7 +501,7 @@ function NuevoIngreso() {
           <div className="mb-3 border-b border-slate-300 pb-3 text-xs">
             <p className="mb-1 font-bold">POLITICAS DE SERVICIO</p>
             <p className="mb-1">
-              1) CLIENTE: Autorizo a Servicio Automotriz DIDIAL Ltda. Para efectuar trabajos indicados en esta orden
+              1) CLIENTE: Autorizo a {empresa?.nombre || 'la empresa'} para efectuar trabajos indicados en esta orden
               de ingreso y en presupuesto efectuado. También autorizo la movilización del vehículo por calles y
               carretera con el fin de efectuar pruebas pertinentes.
             </p>

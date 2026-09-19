@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2026-09-19 — Formato compartido de los 3 documentos + logo de Didial (`0024_logo_empresa.sql`)
+
+**Qué se entrega:** el cliente pidió que los 3 documentos que emite el sistema (Orden de Ingreso, Presupuesto, Orden de Egreso) tuvieran un formato bien definido y consistente, recordando explícitamente que el proyecto es multi-tenant -"la idea es que sea fácilmente programable y exportable a otros casos u otras empresas"- y adjuntó el logo real de Didial para agregarlo a los 3.
+
+- **`empresas.logo_url`** (nueva columna, NULL = sin logo) + bucket público `logos-empresa` en Storage (mismo patrón de carpetas por `empresa_id` que `radar-fotos`, pero público porque un logo no es dato sensible y así el documento impreso lo carga con un `<img src>` directo). Escritura restringida a admin/socia.
+- **Componente nuevo `EncabezadoDocumento.jsx`**, compartido por los 3 documentos: logo (si existe) + nombre/dirección/correo/teléfono a la izquierda, título del documento (N° correlativo/OT, según cada uno) + fecha + página a la derecha. Todo sale de `empresa` (la fila de `empresas` del tenant actual, ya embebida en `AuthContext`) -ningún documento tiene texto de Didial fijo en el código-. `NuevoIngreso.jsx`, `PresupuestoDetalle.jsx` y `OrdenEgreso.jsx` reemplazaron su bloque de encabezado duplicado por este componente.
+- **De paso, dos textos legales que sí tenían "DIDIAL Ltda." hardcodeado** (la cláusula de autorización en Políticas de Servicio de la Orden de Ingreso, y la cláusula de conformidad al retiro en la Orden de Egreso) se corrigieron para leer `empresa?.nombre` -inconsistentes con el resto del documento, que ya era dinámico desde el Bloque 3/6-.
+- El logo también se usa **dentro de la app**: favicon/ícono PWA (`public/logo-didial.png`, activo de build de este deploy) y en el menú lateral (`Menu.jsx`, mismo patrón dinámico de `empresa.logo_url` que los documentos).
+- Probado de punta a punta: OT nueva → Orden de Ingreso con logo y encabezado correcto → presupuesto generado desde esa OT → Presupuesto con el mismo formato → Orden de Egreso (`/trabajos/:id/egreso`) también correcta, incluida la cláusula de conformidad ahora con el nombre real de la empresa. Datos de prueba limpiados (OT 14022, cliente "PruebaLogo Documentos", vehículo "PRUE99").
+
 ## 2026-09-18 — Diagrama de daños al ingreso (`0022_diagrama_danos.sql`, `0023_carrocerias_hatchback_suv.sql`)
 
 **Qué se entrega:** el cliente pidió poder marcar en un dibujo del vehículo dónde tiene daños o detalles al momento del ingreso, sobre planos de referencia reales que compartió (sedán, furgón, pick up, y después hatchback y SUV).

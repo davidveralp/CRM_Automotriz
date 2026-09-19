@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
+import EncabezadoDocumento from '../components/EncabezadoDocumento'
 
 const ETIQUETA_AREA = {
   repuestos: 'Repuestos',
@@ -132,20 +133,11 @@ function OrdenEgreso() {
       {error && <p className="mb-4 text-sm text-red-600 print:hidden">{error}</p>}
 
       <div className="max-w-3xl rounded border border-slate-200 bg-white p-6 text-sm text-slate-900 print:border-0 print:p-0">
-        <div className="mb-2 flex items-start justify-between border-b border-slate-800 pb-2">
-          <div>
-            <p className="font-bold uppercase">{empresa?.nombre}</p>
-            <p>{empresa?.direccion}</p>
-            <p>{empresa?.correo}</p>
-            <p>{empresa?.telefono}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-lg font-bold">ORDEN DE EGRESO</p>
-            <p className="font-bold">OT N° {trabajo.numero_ot}</p>
-            <p className="font-bold">FECHA: {formatoFecha(trabajo.fecha_entrega) || '—'}</p>
-            <p className="mt-1 text-xs">Página: 1</p>
-          </div>
-        </div>
+        <EncabezadoDocumento
+          empresa={empresa}
+          lineas={['ORDEN DE EGRESO', `OT N° ${trabajo.numero_ot}`]}
+          fecha={formatoFecha(trabajo.fecha_entrega) || '—'}
+        />
 
         <div className="mb-3 flex items-center gap-2 border-b border-slate-300 pb-3">
           <span
@@ -244,9 +236,9 @@ function OrdenEgreso() {
           </p>
           <p>Contacto: {egreso?.retirado_por_contacto || ''}</p>
           <p className="mt-2 text-xs">
-            Recibo el vehículo en plena satisfacción respecto a los servicios realizados por Servicio Automotriz DIDIAL
-            Ltda., he revisado las pertenencias y detalles de carrocería indicadas en la orden de ingreso dejando
-            excluida a DIDIAL de cualquier reclamo excepto si hay garantías.
+            Recibo el vehículo en plena satisfacción respecto a los servicios realizados por {empresa?.nombre || 'la empresa'}, he
+            revisado las pertenencias y detalles de carrocería indicadas en la orden de ingreso dejando excluida a{' '}
+            {empresa?.nombre || 'la empresa'} de cualquier reclamo excepto si hay garantías.
           </p>
           <p className="mt-1 text-xs">
             Garantías: Los servicios de mano de obra tienen garantía de 30 días, repuestos usados y reparaciones en

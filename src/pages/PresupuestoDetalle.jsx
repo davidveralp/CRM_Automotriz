@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
+import EncabezadoDocumento from '../components/EncabezadoDocumento'
 
 const ETIQUETA_ESTADO = {
   borrador: 'Borrador',
@@ -255,19 +256,11 @@ function PresupuestoDetalle() {
       )}
 
       <div className="max-w-3xl rounded border border-slate-200 bg-white p-6 text-sm text-slate-900 print:border-0 print:p-0">
-        <div className="mb-2 flex items-start justify-between border-b border-slate-800 pb-2">
-          <div>
-            <p className="font-bold uppercase">{empresa?.nombre}</p>
-            <p>{empresa?.direccion}</p>
-            <p>{empresa?.correo}</p>
-            <p>{empresa?.telefono}</p>
-          </div>
-          <div className="text-right">
-            <p className="font-bold">PRESUPUESTO N° {presupuesto.correlativo}</p>
-            <p className="font-bold">FECHA: {formatoFecha(presupuesto.creado_en)}</p>
-            <p className="mt-1 text-xs">Página: 1</p>
-          </div>
-        </div>
+        <EncabezadoDocumento
+          empresa={empresa}
+          lineas={[`PRESUPUESTO N° ${presupuesto.correlativo}`]}
+          fecha={formatoFecha(presupuesto.creado_en)}
+        />
 
         <div className="mb-3 space-y-0.5 border-b border-slate-300 pb-3">
           <div className="flex justify-between">

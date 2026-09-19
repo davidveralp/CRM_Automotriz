@@ -26,8 +26,14 @@ function Menu() {
   return (
     <nav className="flex w-60 flex-col justify-between border-r border-slate-200 bg-white p-4 print:hidden">
       <div>
-        <p className="text-lg font-semibold text-slate-800">CRM</p>
-        <p className="mb-6 truncate text-xs text-slate-400">{usuario?.empresas?.nombre}</p>
+        <div className="mb-6 flex items-center gap-2">
+          {usuario?.empresas?.logo_url ? (
+            <img src={usuario.empresas.logo_url} alt={usuario.empresas.nombre} className="h-10 w-auto object-contain" />
+          ) : (
+            <p className="text-lg font-semibold text-slate-800">CRM</p>
+          )}
+          <p className="truncate text-xs text-slate-400">{usuario?.empresas?.nombre}</p>
+        </div>
         <div className="flex flex-col gap-1">
           <NavLink to="/" end className={claseEnlace}>
             Inicio

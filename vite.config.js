@@ -13,7 +13,7 @@ export default defineConfig({
       workbox: {
         navigateFallbackDenylist: [/^\/publico/, /^\/encuesta/, /^\/api/],
       },
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['logo-didial.png'],
       manifest: {
         name: 'CRM Didial',
         short_name: 'Didial',
@@ -21,7 +21,10 @@ export default defineConfig({
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
-        icons: [],
+        icons: [
+          { src: '/logo-didial.png', sizes: '192x192', type: 'image/png' },
+          { src: '/logo-didial.png', sizes: '512x512', type: 'image/png' },
+        ],
       },
     }),
   ],
