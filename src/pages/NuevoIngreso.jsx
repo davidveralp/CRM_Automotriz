@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import FirmaCanvas from '../components/FirmaCanvas'
+import DiagramaVehiculo from '../components/DiagramaVehiculo'
 
 function normalizarPatenteLocal(patente) {
   return (patente || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -61,6 +62,7 @@ function NuevoIngreso() {
   const [vinVehiculo, setVinVehiculo] = useState('')
   const [puertasVehiculo, setPuertasVehiculo] = useState('')
   const [aseguradoraVehiculo, setAseguradoraVehiculo] = useState('')
+  const [tipoCarroceria, setTipoCarroceria] = useState('sedan')
   const [propietarioVehiculo, setPropietarioVehiculo] = useState(null)
 
   // --- Cliente ------------------------------------------------------------
@@ -81,6 +83,7 @@ function NuevoIngreso() {
   const [kilometraje, setKilometraje] = useState('')
   const [nivelCombustible, setNivelCombustible] = useState('1/2')
   const [clienteSolicita, setClienteSolicita] = useState('')
+  const [diagramaDanos, setDiagramaDanos] = useState([])
   const [danosVisibles, setDanosVisibles] = useState('')
   const [accesorios, setAccesorios] = useState('')
   const [observaciones, setObservaciones] = useState('')
@@ -130,13 +133,15 @@ function NuevoIngreso() {
     setVinVehiculo('')
     setPuertasVehiculo('')
     setAseguradoraVehiculo('')
+    setTipoCarroceria('sedan')
+    setDiagramaDanos([])
     setPropietarioVehiculo(null)
 
     try {
       const patenteNorm = normalizarPatenteLocal(patenteBusqueda)
       const { data, error: errorConsulta } = await supabase
         .from('vehiculos')
-        .select('id, patente, marca, modelo, anio, kilometraje, color, vin, puertas, aseguradora')
+        .select('id, patente, marca, modelo, anio, kilometraje, color, vin, puertas, aseguradora, tipo_carroceria')
         .eq('patente_norm', patenteNorm)
         .is('eliminado_en', null)
         .maybeSingle()
@@ -152,6 +157,7 @@ function NuevoIngreso() {
         setVinVehiculo(data.vin || '')
         setPuertasVehiculo(data.puertas || '')
         setAseguradoraVehiculo(data.aseguradora || '')
+        setTipoCarroceria(data.tipo_carroceria || 'sedan')
         const { data: vinculos, error: errorVinculos } = await supabase
           .from('clientes_vehiculos')
           .select('es_propietario, clientes(id, tipo, nombre, apellido, razon_social, rut, telefono, email, direccion)')
@@ -299,6 +305,7 @@ function NuevoIngreso() {
             vin: vinVehiculo || null,
             puertas: puertasVehiculo ? Number(puertasVehiculo) : null,
             aseguradora: aseguradoraVehiculo || null,
+            tipo_carroceria: tipoCarroceria,
           })
           .select()
           .single()
@@ -352,6 +359,7 @@ function NuevoIngreso() {
       const { error: errorInspeccion } = await supabase.from('inspecciones_ingreso').insert({
         trabajo_id: trabajo.id,
         cliente_solicita: clienteSolicita || null,
+        diagrama_danos: diagramaDanos.length > 0 ? diagramaDanos : null,
         danos_visibles: danosVisibles || null,
         accesorios: accesorios || null,
         observaciones: observaciones || null,
@@ -380,6 +388,7 @@ function NuevoIngreso() {
             vin: vinVehiculo || null,
             puertas: puertasVehiculo ? Number(puertasVehiculo) : null,
             aseguradora: aseguradoraVehiculo || null,
+            tipo_carroceria: tipoCarroceria,
           })
           .eq('id', vehiculoId)
       }
@@ -486,6 +495,15 @@ function NuevoIngreso() {
             <p className="font-bold">Cliente Solicita:</p>
             <p className="whitespace-pre-line">{clienteSolicita || '—'}</p>
           </div>
+
+          {diagramaDanos.length > 0 && (
+            <div className="mb-3 border-b border-slate-300 pb-3">
+              <p className="mb-1 font-bold">Diagrama de daños/detalles:</p>
+              <div className="max-w-xs print:max-w-[45%]">
+                <DiagramaVehiculo tipo={tipoCarroceria} marcas={diagramaDanos} onCambio={() => {}} soloLectura />
+              </div>
+            </div>
+          )}
 
           <div className="mb-3 border-b border-slate-300 pb-3 text-xs">
             <p className="mb-1 font-bold">POLITICAS DE SERVICIO</p>
@@ -761,7 +779,26 @@ function NuevoIngreso() {
                   className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
                 />
               </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Tipo de carrocería</label>
+                <select
+                  value={tipoCarroceria}
+                  onChange={(evento) => setTipoCarroceria(evento.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                >
+                  <option value="sedan">Sedán</option>
+                  <option value="hatchback">Hatchback</option>
+                  <option value="suv">SUV</option>
+                  <option value="furgon">Furgón</option>
+                  <option value="pickup">Pick up</option>
+                </select>
+              </div>
             </div>
+          </div>
+
+          <div className="mb-4 rounded border border-slate-200 p-3">
+            <p className="mb-2 text-sm font-medium text-slate-700">Diagrama de daños/detalles al ingreso</p>
+            <DiagramaVehiculo tipo={tipoCarroceria} marcas={diagramaDanos} onCambio={setDiagramaDanos} />
           </div>
 
           <div className="mb-4 flex gap-4 text-sm">

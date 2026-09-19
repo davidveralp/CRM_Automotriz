@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2026-09-18 — Diagrama de daños al ingreso (`0022_diagrama_danos.sql`, `0023_carrocerias_hatchback_suv.sql`)
+
+**Qué se entrega:** el cliente pidió poder marcar en un dibujo del vehículo dónde tiene daños o detalles al momento del ingreso, sobre planos de referencia reales que compartió (sedán, furgón, pick up, y después hatchback y SUV).
+
+- `vehiculos.tipo_carroceria` (sedán/hatchback/suv/furgón/pick up) e `inspecciones_ingreso.diagrama_danos` (jsonb: lista de `{vista, x, y, nota}`) — mismo patrón de columna flexible ya usado para `preguntas_descubrimiento`.
+- **Primer intento con SVG dibujado a mano, descartado por el cliente** ("Quedó horrible la imagen. Trata de copiar mejor la imagen de referencia o utilizar la misma que te pase"). Se reconstruyó `DiagramaVehiculo.jsx` para recortar por CSS las imágenes reales que el cliente guardó en disco, en vez de aproximarlas a mano: un decodificador de PNG escrito desde cero (sin librerías) ubica automáticamente las 5 sub-vistas (superior/frontal/lateral derecho/posterior/lateral izquierdo) dentro de cada imagen combinada, detectando los bordes de contenido por densidad de píxeles no blancos fila por fila/columna por columna.
+- El asesor hace click sobre la vista que corresponda para marcar un daño con una nota corta; los hatchback (con una distribución de filas distinta a los otros 4 tipos) usan un layout de impresión propio.
+- **Tamaño de impresión acotado a la mitad de la hoja** a pedido explícito del cliente ("la idea es que no cubra más de la mitad de la hoja de nuevo ingreso"), vía `print:max-w-[45%]`.
+- Probado de punta a punta con datos reales para sedán, furgón, pick up, hatchback y SUV. Datos de prueba limpiados (OT 14019/14020/14021, vehículos PRUE18/PRUE19/PRUE21).
+
 ## 2026-09-16 — Kilometraje de salida en el cierre (`0021_kilometraje_egreso.sql`)
 
 El kilometraje que se pide en el ingreso puede no ser el mismo al momento de retirar el vehículo (pruebas en ruta, traslados a servicios externos). El cliente pidió volver a pedirlo al cerrar, igual que lo muestra el papel real de "Egreso del Vehículo".
