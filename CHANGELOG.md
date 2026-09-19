@@ -1,5 +1,17 @@
 # Registro de cambios
 
+## 2026-09-19 — Ajustes de layout en los 3 documentos + calidad del diagrama de daños
+
+**Qué se entrega:** tras revisar el formato unificado del bloque anterior, el cliente pidió cuatro ajustes puntuales: espacio de firma bien definido en la Orden de Ingreso, nota de vigencia en el Presupuesto, quitar un encabezado redundante en la Orden de Egreso, y revisar la calidad visual del diagrama de daños.
+
+- **`BloqueFirma.jsx`** (nuevo, compartido por Ingreso y Egreso): recuadro de firma con altura fija y línea de base, siempre visible -antes, si el cliente no había firmado digitalmente, no quedaba ningún espacio reservado para firmar en el documento impreso en blanco-.
+- **`BloqueTotales.jsx`** (nuevo, compartido por los 3 documentos): caja de ancho fijo para los montos, en vez de texto suelto alineado a la derecha -mismo espacio definido venga o no el documento con ítems cargados-.
+- **`CampoDato.jsx`** (nuevo, compartido por los 3 documentos): reemplaza los bloques de texto con `&nbsp;&nbsp;` para separar campos (Nombre/Dirección/Marca/Modelo/etc.) por una grilla real de 4 columnas, cada campo con su propia etiqueta y línea -los campos vacíos ya no rompían la alineación visual-.
+- Presupuesto: nota "Este presupuesto tiene una vigencia de 30 días a partir de la fecha de emisión." antes del total, en el mismo bloque que se ancla al final de la hoja al imprimir.
+- Orden de Egreso: se quitó el encabezado "EGRESO DEL VEHÍCULO" -redundante con el título "ORDEN DE EGRESO" que ya trae el encabezado del documento-.
+- **Calidad del diagrama de daños:** las imágenes de referencia de sedán/furgón/pick up venían en solo 550×550px combinados -las vistas individuales recortadas (frontal/posterior) quedaban en ~170px de ancho y se veían pixeladas al mostrarse más grandes-. Se reescalaron con interpolación bicúbica de alta calidad a 1650×1650 y se convirtieron a JPEG (evita que el anti-aliasing del reescalado infle el peso de un PNG). El SUV tenía una resolución inconsistente (1024×1024) y quedó parejo con el resto en 3000×3000. El peso total de las 5 imágenes bajó pese a la mejora de calidad.
+- Probado de punta a punta y verificado visualmente con zoom sobre las vistas del diagrama -líneas limpias, sin pixelado visible-. Datos de prueba limpiados (OT 14023, cliente "PruebaLayout Documento", vehículo "PRUE98"; un cliente suelto "PruebaImagen Calidad" sin OT asociada).
+
 ## 2026-09-19 — Formato compartido de los 3 documentos + logo de Didial (`0024_logo_empresa.sql`)
 
 **Qué se entrega:** el cliente pidió que los 3 documentos que emite el sistema (Orden de Ingreso, Presupuesto, Orden de Egreso) tuvieran un formato bien definido y consistente, recordando explícitamente que el proyecto es multi-tenant -"la idea es que sea fácilmente programable y exportable a otros casos u otras empresas"- y adjuntó el logo real de Didial para agregarlo a los 3.

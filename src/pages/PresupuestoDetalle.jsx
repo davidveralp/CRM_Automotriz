@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import EncabezadoDocumento from '../components/EncabezadoDocumento'
+import CampoDato from '../components/CampoDato'
+import BloqueTotales from '../components/BloqueTotales'
 
 const ETIQUETA_ESTADO = {
   borrador: 'Borrador',
@@ -255,27 +257,21 @@ function PresupuestoDetalle() {
         </p>
       )}
 
-      <div className="max-w-3xl rounded border border-slate-200 bg-white p-6 text-sm text-slate-900 print:border-0 print:p-0">
+      <div className="max-w-3xl rounded border border-slate-200 bg-white p-6 text-sm text-slate-900 print:flex print:min-h-[250mm] print:flex-col print:border-0 print:p-0">
         <EncabezadoDocumento
           empresa={empresa}
           lineas={[`PRESUPUESTO N° ${presupuesto.correlativo}`]}
           fecha={formatoFecha(presupuesto.creado_en)}
         />
 
-        <div className="mb-3 space-y-0.5 border-b border-slate-300 pb-3">
-          <div className="flex justify-between">
-            <p>Patente: {trabajo?.vehiculos?.patente}</p>
-            <p>R.U.T.: {trabajo?.clientes?.rut || ''}</p>
-          </div>
-          <div className="flex justify-between">
-            <p>
-              Nombre Cliente: {nombreCliente(trabajo?.clientes)} &nbsp;&nbsp; Color: {trabajo?.vehiculos?.color || ''}
-            </p>
-            <p>Año: {trabajo?.vehiculos?.anio || ''}</p>
-          </div>
-          <p>
-            Marca: {trabajo?.vehiculos?.marca} &nbsp;&nbsp; Modelo: {trabajo?.vehiculos?.modelo}
-          </p>
+        <div className="mb-3 grid grid-cols-4 gap-x-4 gap-y-2 border-b border-slate-300 pb-3">
+          <CampoDato etiqueta="Patente" valor={trabajo?.vehiculos?.patente} />
+          <CampoDato etiqueta="R.U.T." valor={trabajo?.clientes?.rut} />
+          <CampoDato etiqueta="Color" valor={trabajo?.vehiculos?.color} />
+          <CampoDato etiqueta="Año" valor={trabajo?.vehiculos?.anio} />
+          <CampoDato etiqueta="Nombre Cliente" valor={nombreCliente(trabajo?.clientes)} className="col-span-2" />
+          <CampoDato etiqueta="Marca" valor={trabajo?.vehiculos?.marca} />
+          <CampoDato etiqueta="Modelo" valor={trabajo?.vehiculos?.modelo} />
         </div>
 
         <div className="mb-3 border-b border-slate-300 pb-3">
@@ -321,10 +317,17 @@ function PresupuestoDetalle() {
 
         {items.length === 0 && <p className="mb-3 text-slate-400">Sin ítems vinculados a este presupuesto.</p>}
 
-        <div className="mt-2 text-right text-sm">
-          <p>NETO: {formatoNumero(neto)}</p>
-          <p>I.V.A.: {formatoNumero(iva)}</p>
-          <p className="font-bold">TOTAL: {formatoNumero(total)}</p>
+        <div className="mt-2 print:mt-auto">
+          <p className="mb-2 text-xs italic text-slate-600">
+            Este presupuesto tiene una vigencia de 30 días a partir de la fecha de emisión.
+          </p>
+          <BloqueTotales
+            filas={[
+              { etiqueta: 'NETO', valor: formatoNumero(neto) },
+              { etiqueta: 'I.V.A.', valor: formatoNumero(iva) },
+              { etiqueta: 'TOTAL', valor: formatoNumero(total), destacado: true },
+            ]}
+          />
         </div>
       </div>
     </div>

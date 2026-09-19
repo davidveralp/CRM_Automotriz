@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import imagenSedan from '../assets/diagramas/sedan.png'
-import imagenFurgon from '../assets/diagramas/furgon.png'
-import imagenPickup from '../assets/diagramas/pickup.png'
+import imagenSedan from '../assets/diagramas/sedan.jpg'
+import imagenFurgon from '../assets/diagramas/furgon.jpg'
+import imagenPickup from '../assets/diagramas/pickup.jpg'
 import imagenHatchback from '../assets/diagramas/hatchback.jpg'
 import imagenSuv from '../assets/diagramas/suv.jpg'
 

@@ -5,6 +5,9 @@ import { useAuth } from '../context/AuthContext'
 import FirmaCanvas from '../components/FirmaCanvas'
 import DiagramaVehiculo from '../components/DiagramaVehiculo'
 import EncabezadoDocumento from '../components/EncabezadoDocumento'
+import CampoDato from '../components/CampoDato'
+import BloqueFirma from '../components/BloqueFirma'
+import BloqueTotales from '../components/BloqueTotales'
 
 function normalizarPatenteLocal(patente) {
   return (patente || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -450,38 +453,29 @@ function NuevoIngreso() {
           </div>
         </div>
 
-        <div className="max-w-3xl rounded border border-slate-200 bg-white p-6 text-sm text-slate-900 print:border-0 print:p-0">
+        <div className="max-w-3xl rounded border border-slate-200 bg-white p-6 text-sm text-slate-900 print:flex print:min-h-[250mm] print:flex-col print:border-0 print:p-0">
           <EncabezadoDocumento
             empresa={empresa}
             lineas={[`ORDEN DE TRABAJO N° ${otCreada.numero_ot}`]}
             fecha={fechaFormateada}
           />
 
-          <div className="mb-3 grid grid-cols-2 gap-x-6 border-b border-slate-300 pb-3">
-            <div className="space-y-0.5">
-              <p>Nombre Cliente: {nombreVisible(clienteSeleccionado)}</p>
-              <p>Dirección: {clienteSeleccionado?.direccion || ''}</p>
-              <p>
-                email: {clienteSeleccionado?.email || ''} &nbsp;&nbsp; Fonos: {clienteSeleccionado?.telefono || ''}
-              </p>
-              <p>
-                Marca: {marcaImpresa} &nbsp;&nbsp; Modelo: {modeloImpreso}
-              </p>
-              <p>
-                Chasis: {vinVehiculo || ''} &nbsp;&nbsp; Puertas: {puertasVehiculo || ''}
-              </p>
-              <p>Cía. Aseguradora: {aseguradoraVehiculo || ''}</p>
-            </div>
-            <div className="space-y-0.5">
-              <p>R.U.T.: {clienteSeleccionado?.rut || ''}</p>
-              <p>Dueño Vehículo: {nombreDueno}</p>
-              <p>
-                Color: {colorVehiculo || ''} &nbsp;&nbsp; Año: {anioImpreso || ''}
-              </p>
-              <p>
-                Kilometraje: {kilometraje || ''} &nbsp;&nbsp; Patente: {patenteBusqueda.toUpperCase()}
-              </p>
-            </div>
+          <div className="mb-3 grid grid-cols-4 gap-x-4 gap-y-2 border-b border-slate-300 pb-3">
+            <CampoDato etiqueta="Nombre Cliente" valor={nombreVisible(clienteSeleccionado)} className="col-span-3" />
+            <CampoDato etiqueta="R.U.T." valor={clienteSeleccionado?.rut} />
+            <CampoDato etiqueta="Dirección" valor={clienteSeleccionado?.direccion} className="col-span-2" />
+            <CampoDato etiqueta="Dueño Vehículo" valor={nombreDueno} className="col-span-2" />
+            <CampoDato etiqueta="Email" valor={clienteSeleccionado?.email} className="col-span-2" />
+            <CampoDato etiqueta="Fonos" valor={clienteSeleccionado?.telefono} className="col-span-2" />
+            <CampoDato etiqueta="Marca" valor={marcaImpresa} />
+            <CampoDato etiqueta="Modelo" valor={modeloImpreso} />
+            <CampoDato etiqueta="Color" valor={colorVehiculo} />
+            <CampoDato etiqueta="Año" valor={anioImpreso} />
+            <CampoDato etiqueta="Chasis / VIN" valor={vinVehiculo} />
+            <CampoDato etiqueta="Puertas" valor={puertasVehiculo} />
+            <CampoDato etiqueta="Cía. Aseguradora" valor={aseguradoraVehiculo} className="col-span-2" />
+            <CampoDato etiqueta="Kilometraje" valor={kilometraje} className="col-span-2" />
+            <CampoDato etiqueta="Patente" valor={patenteBusqueda.toUpperCase()} className="col-span-2" />
           </div>
 
           <div className="mb-3 border-b border-slate-300 pb-3">
@@ -512,29 +506,17 @@ function NuevoIngreso() {
             </p>
           </div>
 
-          <div className="mb-3 grid grid-cols-3 gap-4 text-xs">
-            <div>
-              <p>{firmadoPor || nombreVisible(clienteSeleccionado)}</p>
-              <p className="border-t border-slate-800 pt-0.5">NOMBRE Y APELLIDO</p>
-            </div>
-            <div>
-              <p>{firmadoCelular || ''}</p>
-              <p className="border-t border-slate-800 pt-0.5">N° DE CELULAR</p>
-            </div>
-            <div>
-              <p>{rolPersonaPresente === 'conductor' ? 'Conductor' : 'Dueño'}</p>
-              <p className="border-t border-slate-800 pt-0.5">¿ERES DUEÑO O CONDUCTOR?</p>
-            </div>
-          </div>
+          <BloqueFirma
+            titulo="FIRMA CLIENTE INGRESO"
+            firmaPng={firmaPng}
+            campos={[
+              { etiqueta: 'Nombre y apellido', valor: firmadoPor || nombreVisible(clienteSeleccionado) },
+              { etiqueta: 'N° de celular', valor: firmadoCelular },
+              { etiqueta: '¿Eres dueño o conductor?', valor: rolPersonaPresente === 'conductor' ? 'Conductor' : 'Dueño' },
+            ]}
+          />
 
-          {firmaPng && (
-            <div className="mb-1 flex justify-center">
-              <img src={firmaPng} alt="Firma del cliente" className="max-h-24" />
-            </div>
-          )}
-          <p className="border-t border-dashed border-slate-400 pt-1 text-center text-xs">FIRMA CLIENTE INGRESO</p>
-
-          <p className="mt-4 text-right font-bold">TOTAL: 0</p>
+          <BloqueTotales className="mt-3" filas={[{ etiqueta: 'TOTAL', valor: 0, destacado: true }]} />
         </div>
       </div>
     )

@@ -3,6 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import EncabezadoDocumento from '../components/EncabezadoDocumento'
+import CampoDato from '../components/CampoDato'
+import BloqueFirma from '../components/BloqueFirma'
+import BloqueTotales from '../components/BloqueTotales'
 
 const ETIQUETA_AREA = {
   repuestos: 'Repuestos',
@@ -132,7 +135,7 @@ function OrdenEgreso() {
 
       {error && <p className="mb-4 text-sm text-red-600 print:hidden">{error}</p>}
 
-      <div className="max-w-3xl rounded border border-slate-200 bg-white p-6 text-sm text-slate-900 print:border-0 print:p-0">
+      <div className="max-w-3xl rounded border border-slate-200 bg-white p-6 text-sm text-slate-900 print:flex print:min-h-[250mm] print:flex-col print:border-0 print:p-0">
         <EncabezadoDocumento
           empresa={empresa}
           lineas={['ORDEN DE EGRESO', `OT N° ${trabajo.numero_ot}`]}
@@ -150,27 +153,22 @@ function OrdenEgreso() {
           </span>
         </div>
 
-        <div className="mb-3 space-y-0.5 border-b border-slate-300 pb-3">
-          <div className="flex justify-between">
-            <p>Nombre Cliente: {nombreCliente(trabajo.clientes)}</p>
-            <p>R.U.T.: {trabajo.clientes?.rut || ''}</p>
-          </div>
-          <p>Dirección: {trabajo.clientes?.direccion || ''}</p>
-          <div className="flex justify-between">
-            <p>email: {trabajo.clientes?.email || ''}</p>
-            <p>Fonos: {trabajo.clientes?.telefono || ''}</p>
-          </div>
-          <div className="flex justify-between">
-            <p>
-              Marca: {trabajo.vehiculos?.marca} &nbsp;&nbsp; Modelo: {trabajo.vehiculos?.modelo} &nbsp;&nbsp; Color:{' '}
-              {trabajo.vehiculos?.color || ''}
-            </p>
-            <p>Año: {trabajo.vehiculos?.anio || ''}</p>
-          </div>
-          <div className="flex justify-between">
-            <p>Patente: {trabajo.vehiculos?.patente}</p>
-            <p>Kilometraje: {egreso?.kilometraje_egreso || trabajo.vehiculos?.kilometraje || ''}</p>
-          </div>
+        <div className="mb-3 grid grid-cols-4 gap-x-4 gap-y-2 border-b border-slate-300 pb-3">
+          <CampoDato etiqueta="Nombre Cliente" valor={nombreCliente(trabajo.clientes)} className="col-span-3" />
+          <CampoDato etiqueta="R.U.T." valor={trabajo.clientes?.rut} />
+          <CampoDato etiqueta="Dirección" valor={trabajo.clientes?.direccion} className="col-span-4" />
+          <CampoDato etiqueta="Email" valor={trabajo.clientes?.email} className="col-span-2" />
+          <CampoDato etiqueta="Fonos" valor={trabajo.clientes?.telefono} className="col-span-2" />
+          <CampoDato etiqueta="Marca" valor={trabajo.vehiculos?.marca} />
+          <CampoDato etiqueta="Modelo" valor={trabajo.vehiculos?.modelo} />
+          <CampoDato etiqueta="Color" valor={trabajo.vehiculos?.color} />
+          <CampoDato etiqueta="Año" valor={trabajo.vehiculos?.anio} />
+          <CampoDato etiqueta="Patente" valor={trabajo.vehiculos?.patente} className="col-span-2" />
+          <CampoDato
+            etiqueta="Kilometraje"
+            valor={egreso?.kilometraje_egreso || trabajo.vehiculos?.kilometraje}
+            className="col-span-2"
+          />
         </div>
 
         {clienteSolicita && (
@@ -216,7 +214,7 @@ function OrdenEgreso() {
           )
         })}
 
-        <div className="mb-3 flex items-center justify-between border-b border-slate-300 pb-3">
+        <div className="mb-3 flex items-end justify-between border-b border-slate-300 pb-3">
           <p className="text-xs text-slate-600">
             {trabajo.numero_documento_facturacion
               ? `${trabajo.tipo_documento === 'factura' ? 'Factura' : 'Boleta'} N° ${trabajo.numero_documento_facturacion}` +
@@ -225,11 +223,10 @@ function OrdenEgreso() {
                   : '')
               : ''}
           </p>
-          <p className="font-bold">TOTAL: {formatoNumero(total)}</p>
+          <BloqueTotales filas={[{ etiqueta: 'TOTAL', valor: formatoNumero(total), destacado: true }]} />
         </div>
 
         <div className="mb-3 border-b border-slate-300 pb-3">
-          <p className="mb-1 text-lg font-bold">EGRESO DEL VEHÍCULO</p>
           <p>
             Cliente/Quien Retira: {egreso?.retirado_por_nombre || nombreCliente(trabajo.clientes)} &nbsp;&nbsp; Rut:{' '}
             {egreso?.retirado_por_rut || ''}
@@ -257,12 +254,7 @@ function OrdenEgreso() {
           )}
         </div>
 
-        {egreso?.firma_png && (
-          <div className="mb-1 flex justify-center">
-            <img src={egreso.firma_png} alt="Firma del cliente" className="max-h-24" />
-          </div>
-        )}
-        <p className="border-t border-dashed border-slate-400 pt-1 text-center text-xs">FIRMA CLIENTE</p>
+        <BloqueFirma titulo="FIRMA CLIENTE" firmaPng={egreso?.firma_png} />
       </div>
     </div>
   )
