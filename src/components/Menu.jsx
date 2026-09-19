@@ -53,6 +53,9 @@ function Menu() {
           <NavLink to="/oportunidades" className={claseEnlace}>
             Oportunidades
           </NavLink>
+          <NavLink to="/encuestas" className={claseEnlace}>
+            Encuestas
+          </NavLink>
           <NavLink to="/informes" className={claseEnlace}>
             Informes
           </NavLink>

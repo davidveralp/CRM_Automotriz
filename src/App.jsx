@@ -13,6 +13,7 @@ import Trabajos from './pages/Trabajos'
 import TrabajoDetalle from './pages/TrabajoDetalle'
 import RadarSesion from './pages/RadarSesion'
 import Oportunidades from './pages/Oportunidades'
+import Encuestas from './pages/Encuestas'
 import EncuestaPublica from './pages/EncuestaPublica'
 import Agenda from './pages/Agenda'
 import Informes from './pages/Informes'
@@ -59,6 +60,7 @@ function App() {
           <Route path="/trabajos/:id" element={paginaProtegida(<TrabajoDetalle />)} />
           <Route path="/trabajos/:id/radar" element={paginaProtegida(<RadarSesion />)} />
           <Route path="/oportunidades" element={paginaProtegida(<Oportunidades />)} />
+          <Route path="/encuestas" element={paginaProtegida(<Encuestas />)} />
           <Route path="/agenda" element={paginaProtegida(<Agenda />)} />
           <Route
             path="/taller"
