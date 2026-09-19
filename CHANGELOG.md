@@ -1,5 +1,14 @@
 # Registro de cambios
 
+## 2026-09-19 — Bloqueo de edición al cerrar la OT + observaciones de postventa (`0026_bloqueo_ot_cerrada.sql`)
+
+**Qué se entrega:** el cliente pidió que, al marcar una OT como entregada, la información quede fija -tareas, ítems, precios y decisiones no se puedan seguir editando después de que el cliente ya se llevó el vehículo y firmó el documento impreso-, con una única excepción: seguir pudiendo agregar observaciones de postventa (llamados de seguimiento, reclamos, garantías).
+
+- **Protección en dos capas** (RLS no alcanza sola porque todos los roles comparten el rol `authenticated`, mismo criterio que la protección de precios del Bloque 5): un trigger en `ot_detalle`/`tareas_taller` rechaza cualquier escritura mientras `trabajos_taller.bloqueada_en` no sea NULL -probado directo contra la API, sin pasar por la interfaz, y rechazó el intento correctamente-. El trigger deja pasar a `service_role` (la sincronización con ClickUp sigue reflejando el estado real de una tarjeta aunque la OT ya esté cerrada).
+- El bloqueo se activa solo al marcar "entregado" (vía trigger). Admin/socia puede **reabrir la OT** para corregir un error real y **volver a bloquearla** después -ambas acciones quedan auditadas (`reabierta_por`/`reabierta_en`)-.
+- Tabla nueva `observaciones_postventa`: bitácora de solo lectura+inserción (sin UPDATE/DELETE, es un registro de lo que pasó) que se sigue pudiendo escribir aunque la OT esté bloqueada -la excepción explícita que pidió el cliente-. Sección nueva al final de la ficha de la OT.
+- Probado de punta a punta: OT con un ítem → cerrada → los formularios de agregar tarea/ítem se reemplazaron por el aviso de "OT cerrada", el checkbox de verificado y los inputs de costo/precio/decisión quedaron deshabilitados → un `PATCH` directo a la API (sin pasar por la UI) fue rechazado por el trigger con el mensaje esperado → "Reabrir OT" liberó la edición → se agregó una observación de postventa → "Bloquear de nuevo" volvió a cerrarla, con la observación agregada visible después. Datos de prueba limpiados (OT 14029, cliente "PruebaBloqueo OT", vehículo "PRUE90").
+
 ## 2026-09-19 — Impresión del diagrama de daños + limpieza de documentos
 
 **Qué se entrega:** revisando el formato ya unificado de los 3 documentos, el cliente encontró tres problemas concretos: el diagrama de daños no se veía al exportar a PDF, las marcas rojas tampoco, y un bloque de datos redundante en la Orden de Egreso.

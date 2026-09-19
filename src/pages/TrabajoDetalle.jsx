@@ -49,14 +49,21 @@ function TrabajoDetalle() {
   const tieneAccesoPrecioVenta = tieneAccesoMontos || usuario?.rol === 'asesor'
   const columnasMontos = (tieneAccesoMontos ? 1 : 0) + (tieneAccesoPrecioVenta ? 2 : 0)
 
+  const puedeAdministrar = usuario?.rol === 'admin' || usuario?.rol === 'socia'
+
   const [trabajo, setTrabajo] = useState(null)
   const [tareas, setTareas] = useState([])
   const [detalle, setDetalle] = useState([])
   const [presupuestos, setPresupuestos] = useState([])
   const [tecnicos, setTecnicos] = useState([])
   const [productos, setProductos] = useState([])
+  const [observaciones, setObservaciones] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
+
+  const [textoObservacion, setTextoObservacion] = useState('')
+  const [guardandoObservacion, setGuardandoObservacion] = useState(false)
+  const [cambiandoBloqueo, setCambiandoBloqueo] = useState(false)
 
   const [descripcionTarea, setDescripcionTarea] = useState('')
   const [tecnicoTarea, setTecnicoTarea] = useState('')
@@ -98,10 +105,11 @@ function TrabajoDetalle() {
         { data: presupuestosData },
         { data: tecnicosData },
         { data: productosData },
+        { data: observacionesData },
       ] = await Promise.all([
         supabase
           .from('trabajos_taller')
-          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, numero_documento_facturacion, tipo_documento, estado_pago, fecha_vencimiento_pago, fecha_entrega, vehiculo_id, clientes(nombre, apellido, razon_social, rut, tipo, telefono, telefono_norm), vehiculos(patente, marca, modelo, anio, kilometraje)')
+          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, numero_documento_facturacion, tipo_documento, estado_pago, fecha_vencimiento_pago, fecha_entrega, vehiculo_id, bloqueada_en, reabierta_en, clientes(nombre, apellido, razon_social, rut, tipo, telefono, telefono_norm), vehiculos(patente, marca, modelo, anio, kilometraje)')
           .eq('id', id)
           .maybeSingle(),
         supabase
@@ -119,6 +127,11 @@ function TrabajoDetalle() {
         supabase.from('presupuestos_taller').select('id, correlativo, estado, creado_en').eq('trabajo_id', id).order('creado_en', { ascending: false }),
         supabase.from('usuarios').select('id, nombre_completo').eq('rol', 'tecnico').eq('activo', true),
         supabase.from('productos').select('id, nombre, stock_actual, unidad_medida').eq('activo', true).order('nombre'),
+        supabase
+          .from('observaciones_postventa')
+          .select('id, texto, creado_en, usuarios(nombre_completo)')
+          .eq('trabajo_id', id)
+          .order('creado_en', { ascending: false }),
       ])
 
       if (errorTrabajo) {
@@ -132,6 +145,7 @@ function TrabajoDetalle() {
       setPresupuestos(presupuestosData || [])
       setTecnicos(tecnicosData || [])
       setProductos(productosData || [])
+      setObservaciones(observacionesData || [])
     } catch {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
     } finally {
@@ -373,8 +387,67 @@ function TrabajoDetalle() {
     }
   }
 
+  async function reabrirOt() {
+    setCambiandoBloqueo(true)
+    setError(null)
+    try {
+      const { error: errorRpc } = await supabase.rpc('trabajo_reabrir', { p_trabajo_id: id })
+      if (errorRpc) {
+        setError(errorRpc.message)
+        return
+      }
+      await cargarTodo()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setCambiandoBloqueo(false)
+    }
+  }
+
+  async function bloquearOtDeNuevo() {
+    setCambiandoBloqueo(true)
+    setError(null)
+    try {
+      const { error: errorRpc } = await supabase.rpc('trabajo_bloquear', { p_trabajo_id: id })
+      if (errorRpc) {
+        setError(errorRpc.message)
+        return
+      }
+      await cargarTodo()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setCambiandoBloqueo(false)
+    }
+  }
+
+  async function agregarObservacionPostventa(evento) {
+    evento.preventDefault()
+    if (!textoObservacion.trim()) return
+    setGuardandoObservacion(true)
+    setError(null)
+    try {
+      const { error: errorInsercion } = await supabase
+        .from('observaciones_postventa')
+        .insert({ trabajo_id: id, autor_id: usuario.id, texto: textoObservacion.trim() })
+      if (errorInsercion) {
+        setError(errorInsercion.message)
+        return
+      }
+      setTextoObservacion('')
+      await cargarTodo()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setGuardandoObservacion(false)
+    }
+  }
+
   if (cargando) return <div className="p-6 text-slate-500">Cargando…</div>
   if (!trabajo) return <div className="p-6 text-slate-500">No se encontró el trabajo.</div>
+
+  const bloqueada = !!trabajo.bloqueada_en
+  const reabierta = trabajo.estado === 'entregado' && !bloqueada
 
   return (
     <div className="p-6">
@@ -411,6 +484,40 @@ function TrabajoDetalle() {
         </div>
       </div>
 
+      {bloqueada && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700">
+          <p>OT cerrada, entregada el {new Date(trabajo.bloqueada_en).toLocaleString('es-CL')}. No se puede editar mano de obra, ítems ni valorización -solo agregar observaciones de postventa-.</p>
+          {puedeAdministrar && (
+            <button
+              type="button"
+              onClick={reabrirOt}
+              disabled={cambiandoBloqueo}
+              className="shrink-0 rounded border border-slate-400 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {cambiandoBloqueo ? 'Reabriendo…' : 'Reabrir OT'}
+            </button>
+          )}
+        </div>
+      )}
+      {reabierta && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p>
+            OT reabierta{trabajo.reabierta_en ? ` el ${new Date(trabajo.reabierta_en).toLocaleString('es-CL')}` : ''} para
+            corregir un error. Vuelve a bloquearla cuando termines.
+          </p>
+          {puedeAdministrar && (
+            <button
+              type="button"
+              onClick={bloquearOtDeNuevo}
+              disabled={cambiandoBloqueo}
+              className="shrink-0 rounded border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+            >
+              {cambiandoBloqueo ? 'Bloqueando…' : 'Bloquear de nuevo'}
+            </button>
+          )}
+        </div>
+      )}
+
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
       {errorSync && <p className="mb-4 text-sm text-red-600">Error al sincronizar: {errorSync}</p>}
       {resultadoSync && (
@@ -443,34 +550,40 @@ function TrabajoDetalle() {
             ))}
             {tareas.length === 0 && <li className="px-3 py-3 text-sm text-slate-400">Sin tareas todavía.</li>}
           </ul>
-          <form onSubmit={agregarTarea} className="rounded border border-slate-200 bg-white p-3">
-            <input
-              required
-              value={descripcionTarea}
-              onChange={(evento) => setDescripcionTarea(evento.target.value)}
-              placeholder="Ej. Cambio de pastillas de freno delanteras"
-              className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            />
-            <select
-              value={tecnicoTarea}
-              onChange={(evento) => setTecnicoTarea(evento.target.value)}
-              className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option value="">Sin asignar todavía</option>
-              {tecnicos.map((tecnico) => (
-                <option key={tecnico.id} value={tecnico.id}>
-                  {tecnico.nombre_completo}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              disabled={guardandoTarea}
-              className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-            >
-              Agregar tarea
-            </button>
-          </form>
+          {bloqueada ? (
+            <p className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-400">
+              OT cerrada, no se pueden agregar tareas.
+            </p>
+          ) : (
+            <form onSubmit={agregarTarea} className="rounded border border-slate-200 bg-white p-3">
+              <input
+                required
+                value={descripcionTarea}
+                onChange={(evento) => setDescripcionTarea(evento.target.value)}
+                placeholder="Ej. Cambio de pastillas de freno delanteras"
+                className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              />
+              <select
+                value={tecnicoTarea}
+                onChange={(evento) => setTecnicoTarea(evento.target.value)}
+                className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">Sin asignar todavía</option>
+                {tecnicos.map((tecnico) => (
+                  <option key={tecnico.id} value={tecnico.id}>
+                    {tecnico.nombre_completo}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={guardandoTarea}
+                className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                Agregar tarea
+              </button>
+            </form>
+          )}
         </section>
 
         <section>
@@ -485,7 +598,12 @@ function TrabajoDetalle() {
                       {item.detalle} <span className="text-slate-400">× {item.cantidad}</span>
                     </span>
                     <label className="flex items-center gap-1 text-xs">
-                      <input type="checkbox" checked={item.verificado} onChange={() => alternarVerificado(item)} />
+                      <input
+                        type="checkbox"
+                        checked={item.verificado}
+                        disabled={bloqueada}
+                        onChange={() => alternarVerificado(item)}
+                      />
                       <span className={item.verificado ? 'text-green-600' : 'text-slate-400'}>
                         {item.verificado ? 'Verificado' : ETIQUETA_AREA[item.area]}
                       </span>
@@ -505,80 +623,86 @@ function TrabajoDetalle() {
               <li className="px-3 py-3 text-sm text-slate-400">Sin ítems todavía.</li>
             )}
           </ul>
-          <form onSubmit={agregarDetalle} className="rounded border border-slate-200 bg-white p-3">
-            <select
-              value={areaDetalle}
-              onChange={(evento) => setAreaDetalle(evento.target.value)}
-              className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-              {Object.entries(ETIQUETA_AREA)
-                .filter(([valor]) => valor !== 'mano_obra')
-                .map(([valor, etiqueta]) => (
-                  <option key={valor} value={valor}>
-                    {etiqueta}
-                  </option>
-                ))}
-            </select>
-            {(areaDetalle === 'repuestos' || areaDetalle === 'lubricantes_insumos') && (
-              <>
-                {!provistoPorCliente && productos.length > 0 && (
-                  <select
-                    value={productoDetalle}
-                    onChange={(evento) => setProductoDetalle(evento.target.value)}
-                    className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                  >
-                    <option value="">Sin vincular a bodega</option>
-                    {productos.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nombre} (stock {p.stock_actual} {p.unidad_medida})
-                      </option>
-                    ))}
-                  </select>
-                )}
-                <label className="mb-2 flex items-center gap-2 text-xs text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={provistoPorCliente}
-                    onChange={(evento) => {
-                      setProvistoPorCliente(evento.target.checked)
-                      if (evento.target.checked) setProductoDetalle('')
-                    }}
-                  />
-                  El cliente trae este repuesto (no se valoriza)
-                </label>
-              </>
-            )}
-            <div className="mb-2 flex gap-2">
-              <input
-                required
-                value={detalleTexto}
-                onChange={(evento) => setDetalleTexto(evento.target.value)}
-                placeholder="Ej. Filtro de aceite"
-                className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              />
-              <input
-                type="number"
-                min="1"
-                value={cantidadDetalle}
-                onChange={(evento) => setCantidadDetalle(evento.target.value)}
-                className="w-20 rounded border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={guardandoDetalle}
-              className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-            >
-              Agregar ítem
-            </button>
-          </form>
+          {bloqueada ? (
+            <p className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-400">
+              OT cerrada, no se pueden agregar ítems.
+            </p>
+          ) : (
+            <form onSubmit={agregarDetalle} className="rounded border border-slate-200 bg-white p-3">
+              <select
+                value={areaDetalle}
+                onChange={(evento) => setAreaDetalle(evento.target.value)}
+                className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              >
+                {Object.entries(ETIQUETA_AREA)
+                  .filter(([valor]) => valor !== 'mano_obra')
+                  .map(([valor, etiqueta]) => (
+                    <option key={valor} value={valor}>
+                      {etiqueta}
+                    </option>
+                  ))}
+              </select>
+              {(areaDetalle === 'repuestos' || areaDetalle === 'lubricantes_insumos') && (
+                <>
+                  {!provistoPorCliente && productos.length > 0 && (
+                    <select
+                      value={productoDetalle}
+                      onChange={(evento) => setProductoDetalle(evento.target.value)}
+                      className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    >
+                      <option value="">Sin vincular a bodega</option>
+                      {productos.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.nombre} (stock {p.stock_actual} {p.unidad_medida})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <label className="mb-2 flex items-center gap-2 text-xs text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={provistoPorCliente}
+                      onChange={(evento) => {
+                        setProvistoPorCliente(evento.target.checked)
+                        if (evento.target.checked) setProductoDetalle('')
+                      }}
+                    />
+                    El cliente trae este repuesto (no se valoriza)
+                  </label>
+                </>
+              )}
+              <div className="mb-2 flex gap-2">
+                <input
+                  required
+                  value={detalleTexto}
+                  onChange={(evento) => setDetalleTexto(evento.target.value)}
+                  placeholder="Ej. Filtro de aceite"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                />
+                <input
+                  type="number"
+                  min="1"
+                  value={cantidadDetalle}
+                  onChange={(evento) => setCantidadDetalle(evento.target.value)}
+                  className="w-20 rounded border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={guardandoDetalle}
+                className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                Agregar ítem
+              </button>
+            </form>
+          )}
         </section>
       </div>
 
       <section className="mt-8 max-w-4xl">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Valorización y negociación</h2>
-          {tieneAccesoMontos && (
+          {tieneAccesoMontos && !bloqueada && (
             <button
               type="button"
               onClick={generarPresupuesto}
@@ -654,8 +778,9 @@ function TrabajoDetalle() {
                             <input
                               type="number"
                               defaultValue={item.costo_unitario ?? ''}
+                              disabled={bloqueada}
                               onBlur={(evento) => actualizarPrecioItem(item.id, 'costo_unitario', evento.target.value)}
-                              className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                              className="w-24 rounded border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-100 disabled:text-slate-500"
                             />
                           </td>
                         )}
@@ -665,8 +790,9 @@ function TrabajoDetalle() {
                               <input
                                 type="number"
                                 defaultValue={item.precio_unitario ?? ''}
+                                disabled={bloqueada}
                                 onBlur={(evento) => actualizarPrecioItem(item.id, 'precio_unitario', evento.target.value)}
-                                className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                                className="w-24 rounded border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-100 disabled:text-slate-500"
                               />
                             ) : (
                               <span className="text-slate-800">{formatoMoneda(item.precio_unitario)}</span>
@@ -685,8 +811,9 @@ function TrabajoDetalle() {
                   <td className="px-3 py-2">
                     <select
                       value={item.decision}
+                      disabled={bloqueada}
                       onChange={(evento) => actualizarDecisionItem(item.id, { decision: evento.target.value })}
-                      className="rounded border border-slate-300 px-2 py-1 text-sm"
+                      className="rounded border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-100 disabled:text-slate-500"
                     >
                       {Object.entries(ETIQUETA_DECISION).map(([valor, etiqueta]) => (
                         <option key={valor} value={valor}>
@@ -698,16 +825,18 @@ function TrabajoDetalle() {
                       <input
                         placeholder="Motivo"
                         defaultValue={item.motivo_rechazo || ''}
+                        disabled={bloqueada}
                         onBlur={(evento) => actualizarDecisionItem(item.id, { motivo_rechazo: evento.target.value })}
-                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-500"
                       />
                     )}
                     {item.decision === 'postergado' && (
                       <input
                         type="date"
                         defaultValue={item.fecha_postergado || ''}
+                        disabled={bloqueada}
                         onBlur={(evento) => actualizarDecisionItem(item.id, { fecha_postergado: evento.target.value || null })}
-                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-500"
                       />
                     )}
                   </td>
@@ -865,6 +994,47 @@ function TrabajoDetalle() {
               {cerrando ? 'Cerrando…' : 'Marcar como entregado'}
             </button>
           </form>
+        )}
+      </section>
+
+      <section className="mt-8 max-w-md">
+        <h2 className="mb-2 text-lg font-semibold text-slate-900">Observaciones de postventa</h2>
+        <ul className="mb-3 divide-y divide-slate-100 rounded border border-slate-200 bg-white">
+          {observaciones.map((observacion) => (
+            <li key={observacion.id} className="px-3 py-2 text-sm">
+              <p className="text-slate-800 whitespace-pre-line">{observacion.texto}</p>
+              <p className="mt-0.5 text-xs text-slate-400">
+                {observacion.usuarios?.nombre_completo || 'Sin autor'} ·{' '}
+                {new Date(observacion.creado_en).toLocaleString('es-CL')}
+              </p>
+            </li>
+          ))}
+          {observaciones.length === 0 && (
+            <li className="px-3 py-3 text-sm text-slate-400">Sin observaciones todavía.</li>
+          )}
+        </ul>
+        {trabajo.estado === 'entregado' ? (
+          <form onSubmit={agregarObservacionPostventa} className="rounded border border-slate-200 bg-white p-3">
+            <textarea
+              required
+              value={textoObservacion}
+              onChange={(evento) => setTextoObservacion(evento.target.value)}
+              rows={2}
+              placeholder="Ej. cliente llamó por ruido en freno, se agendó revisión"
+              className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={guardandoObservacion}
+              className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {guardandoObservacion ? 'Guardando…' : 'Agregar observación'}
+            </button>
+          </form>
+        ) : (
+          <p className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-400">
+            Las observaciones de postventa se agregan una vez que la OT esté entregada.
+          </p>
         )}
       </section>
     </div>
