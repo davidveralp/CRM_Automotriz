@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2026-09-20 — Lista de inspección del RADAR (`0029_radar_checklist.sql`, `0030_seed_radar_checklist_didial.sql`)
+
+**Qué se entrega:** el RADAR (Bloque 6) era 100% texto libre -el técnico solo registraba un hallazgo cuando encontraba algo, sin ninguna guía de qué revisar-. El cliente compartió su lista real de inspección (7 áreas, 48 puntos) para que el técnico la recorra punto por punto durante la sesión.
+
+- **Tablas nuevas** `radar_checklist_items` (catálogo de puntos, multi-tenant) y `radar_checklist_respuestas` (una respuesta por punto y por sesión: bien/requiere atención/no aplica + nota opcional). Se mantienen separadas de `radar_hallazgos` a propósito: la lista es "qué se revisó y cómo quedó", los hallazgos siguen siendo "qué se le va a cobrar al cliente", con su propio precio referencial y urgencia.
+- **Conexión entre ambas, sin duplicar el dato a mano:** un punto marcado "Requiere atención" muestra un botón "Convertir en hallazgo" que precarga el formulario de hallazgo ya existente (con el área+punto como detalle) — el técnico solo completa precio/urgencia, no tiene que escribirlo de nuevo.
+- La lista de inspección solo aparece en la vista de captura (la del técnico); el modo presentación (pantalla para el cliente) sigue mostrando únicamente los hallazgos, sin el ruido de 48 puntos.
+- **La planilla original traía un bloque de 5 filas duplicado** ("TREN TRASERO" copiado y pegado dos veces al final) — se cargaron los 48 puntos únicos, no 53.
+- Probado de punta a punta: sesión RADAR iniciada → "Nivel aceite motor" marcado "Atención" con nota → contador de avance actualizado (2/48) → "Convertir en hallazgo" precargó el formulario correctamente → hallazgo agregado con precio → al finalizar y presentar, la pantalla de cliente mostró solo el hallazgo, sin el checklist. Datos de prueba limpiados (OT 14031, cliente "PruebaRadar Checklist", vehículo "PRUE88").
+
 ## 2026-09-20 — Catálogo de servicios y precios (`0027_catalogo_servicios.sql`, `0028_seed_catalogo_didial.sql`)
 
 **Qué se entrega:** el cliente compartió su planilla real de precios ("Base de datos de precios Didial") y pidió un flujo guiado: tipo de vehículo → categoría → servicio, con precio de mano de obra automático y repuestos sugeridos cargados solos a la OT.

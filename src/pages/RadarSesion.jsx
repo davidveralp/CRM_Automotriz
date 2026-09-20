@@ -35,6 +35,8 @@ function RadarSesion() {
   const [trabajo, setTrabajo] = useState(null)
   const [sesion, setSesion] = useState(null)
   const [hallazgos, setHallazgos] = useState([])
+  const [checklistItems, setChecklistItems] = useState([])
+  const [checklistRespuestas, setChecklistRespuestas] = useState({})
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
   const [modoPresentacion, setModoPresentacion] = useState(false)
@@ -82,6 +84,14 @@ function RadarSesion() {
           .eq('radar_inspeccion_id', sesionData.id)
           .order('orden')
         setHallazgos(hallazgosData || [])
+
+        const { data: respuestasData } = await supabase
+          .from('radar_checklist_respuestas')
+          .select('checklist_item_id, estado, nota')
+          .eq('radar_inspeccion_id', sesionData.id)
+        const mapaRespuestas = {}
+        for (const r of respuestasData || []) mapaRespuestas[r.checklist_item_id] = { estado: r.estado, nota: r.nota || '' }
+        setChecklistRespuestas(mapaRespuestas)
       }
     } catch {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
@@ -94,6 +104,21 @@ function RadarSesion() {
     cargarTodo()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // La lista de inspección es de la empresa, no de esta sesión puntual: se
+  // carga una sola vez.
+  useEffect(() => {
+    async function cargarChecklist() {
+      const { data } = await supabase
+        .from('radar_checklist_items')
+        .select('id, area, item, orden')
+        .eq('activo', true)
+        .order('area')
+        .order('orden')
+      setChecklistItems(data || [])
+    }
+    cargarChecklist()
+  }, [])
 
   useEffect(() => {
     if (!sesion?.iniciado_en || sesion.finalizado_en) return
@@ -124,9 +149,32 @@ function RadarSesion() {
       }
       setSesion(data)
       setHallazgos([])
+      setChecklistRespuestas({})
     } catch {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
     }
+  }
+
+  async function guardarRespuestaChecklist(checklistItemId, cambios) {
+    const anterior = checklistRespuestas[checklistItemId] || { estado: 'bien', nota: '' }
+    const nueva = { ...anterior, ...cambios }
+    setChecklistRespuestas((actual) => ({ ...actual, [checklistItemId]: nueva }))
+    try {
+      const { error: errorUpsert } = await supabase
+        .from('radar_checklist_respuestas')
+        .upsert(
+          { radar_inspeccion_id: sesion.id, checklist_item_id: checklistItemId, estado: nueva.estado, nota: nueva.nota || null },
+          { onConflict: 'radar_inspeccion_id,checklist_item_id' }
+        )
+      if (errorUpsert) setError(errorUpsert.message)
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    }
+  }
+
+  function usarChecklistComoHallazgo(area, item) {
+    setDetalle(`${area} — ${item}`)
+    document.getElementById('form-hallazgo')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
   async function agregarHallazgo(evento) {
@@ -208,6 +256,8 @@ function RadarSesion() {
 
   if (cargando) return <div className="p-6 text-slate-500">Cargando…</div>
   if (!trabajo) return <div className="p-6 text-slate-500">No se encontró el trabajo.</div>
+
+  const areasChecklist = [...new Set(checklistItems.map((item) => item.area))]
 
   // --- Vista de presentación: pantalla grande y limpia para mostrar al cliente ---
   if (modoPresentacion) {
@@ -309,6 +359,82 @@ function RadarSesion() {
             </button>
           </div>
 
+          {checklistItems.length > 0 && (
+            <div className="mb-4 rounded border border-slate-200 bg-white p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-800">Lista de inspección</h2>
+                <span className="text-xs text-slate-400">
+                  {Object.keys(checklistRespuestas).length}/{checklistItems.length} revisados
+                </span>
+              </div>
+              {areasChecklist.map((areaChecklist) => (
+                <div key={areaChecklist} className="mb-3 last:mb-0">
+                  <p className="mb-1 text-xs font-semibold uppercase text-slate-500">{areaChecklist}</p>
+                  <div className="divide-y divide-slate-100">
+                    {checklistItems
+                      .filter((item) => item.area === areaChecklist)
+                      .map((item) => {
+                        const respuesta = checklistRespuestas[item.id]
+                        return (
+                          <div key={item.id} className="py-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm text-slate-700">{item.item}</span>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => guardarRespuestaChecklist(item.id, { estado: 'bien' })}
+                                  className={`rounded px-2 py-1 text-xs ${
+                                    respuesta?.estado === 'bien' ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  Bien
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => guardarRespuestaChecklist(item.id, { estado: 'atencion' })}
+                                  className={`rounded px-2 py-1 text-xs ${
+                                    respuesta?.estado === 'atencion' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  Atención
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => guardarRespuestaChecklist(item.id, { estado: 'no_aplica' })}
+                                  className={`rounded px-2 py-1 text-xs ${
+                                    respuesta?.estado === 'no_aplica' ? 'bg-slate-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  N/A
+                                </button>
+                              </div>
+                            </div>
+                            {respuesta?.estado === 'atencion' && (
+                              <div className="mt-1 flex items-center gap-2">
+                                <input
+                                  value={respuesta.nota}
+                                  onChange={(evento) => guardarRespuestaChecklist(item.id, { nota: evento.target.value })}
+                                  placeholder="Nota (opcional)"
+                                  className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => usarChecklistComoHallazgo(areaChecklist, item.item)}
+                                  className="shrink-0 text-xs text-amber-700 underline hover:text-amber-900"
+                                >
+                                  → Convertir en hallazgo
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <ul className="mb-4 divide-y divide-slate-100 rounded border border-slate-200 bg-white">
             {hallazgos.map((h) => (
               <li key={h.id} className="flex items-center justify-between px-3 py-2 text-sm">
@@ -326,7 +452,7 @@ function RadarSesion() {
             {hallazgos.length === 0 && <li className="px-3 py-3 text-sm text-slate-400">Sin hallazgos todavía.</li>}
           </ul>
 
-          <form onSubmit={agregarHallazgo} className="rounded border border-slate-200 bg-white p-3">
+          <form id="form-hallazgo" onSubmit={agregarHallazgo} className="rounded border border-slate-200 bg-white p-3">
             <input
               required
               value={detalle}
