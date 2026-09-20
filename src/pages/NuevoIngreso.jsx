@@ -67,6 +67,7 @@ function NuevoIngreso() {
   const [puertasVehiculo, setPuertasVehiculo] = useState('')
   const [aseguradoraVehiculo, setAseguradoraVehiculo] = useState('')
   const [tipoCarroceria, setTipoCarroceria] = useState('sedan')
+  const [tipoCombustible, setTipoCombustible] = useState('bencina')
   const [propietarioVehiculo, setPropietarioVehiculo] = useState(null)
 
   // --- Cliente ------------------------------------------------------------
@@ -138,6 +139,7 @@ function NuevoIngreso() {
     setPuertasVehiculo('')
     setAseguradoraVehiculo('')
     setTipoCarroceria('sedan')
+    setTipoCombustible('bencina')
     setDiagramaDanos([])
     setPropietarioVehiculo(null)
 
@@ -145,7 +147,7 @@ function NuevoIngreso() {
       const patenteNorm = normalizarPatenteLocal(patenteBusqueda)
       const { data, error: errorConsulta } = await supabase
         .from('vehiculos')
-        .select('id, patente, marca, modelo, anio, kilometraje, color, vin, puertas, aseguradora, tipo_carroceria')
+        .select('id, patente, marca, modelo, anio, kilometraje, color, vin, puertas, aseguradora, tipo_carroceria, tipo_combustible')
         .eq('patente_norm', patenteNorm)
         .is('eliminado_en', null)
         .maybeSingle()
@@ -162,6 +164,7 @@ function NuevoIngreso() {
         setPuertasVehiculo(data.puertas || '')
         setAseguradoraVehiculo(data.aseguradora || '')
         setTipoCarroceria(data.tipo_carroceria || 'sedan')
+        setTipoCombustible(data.tipo_combustible || 'bencina')
         const { data: vinculos, error: errorVinculos } = await supabase
           .from('clientes_vehiculos')
           .select('es_propietario, clientes(id, tipo, nombre, apellido, razon_social, rut, telefono, email, direccion)')
@@ -310,6 +313,7 @@ function NuevoIngreso() {
             puertas: puertasVehiculo ? Number(puertasVehiculo) : null,
             aseguradora: aseguradoraVehiculo || null,
             tipo_carroceria: tipoCarroceria,
+            tipo_combustible: tipoCombustible,
           })
           .select()
           .single()
@@ -393,6 +397,7 @@ function NuevoIngreso() {
             puertas: puertasVehiculo ? Number(puertasVehiculo) : null,
             aseguradora: aseguradoraVehiculo || null,
             tipo_carroceria: tipoCarroceria,
+            tipo_combustible: tipoCombustible,
           })
           .eq('id', vehiculoId)
       }
@@ -766,6 +771,17 @@ function NuevoIngreso() {
                   <option value="suv">SUV</option>
                   <option value="furgon">Furgón</option>
                   <option value="pickup">Pick up</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Combustible</label>
+                <select
+                  value={tipoCombustible}
+                  onChange={(evento) => setTipoCombustible(evento.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                >
+                  <option value="bencina">Bencina</option>
+                  <option value="diesel">Diésel</option>
                 </select>
               </div>
             </div>

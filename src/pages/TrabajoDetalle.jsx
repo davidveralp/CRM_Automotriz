@@ -21,6 +21,14 @@ const ETIQUETA_DECISION = {
   postergado: 'Postergado',
 }
 
+const ETIQUETA_CARROCERIA = {
+  sedan: 'Sedán',
+  hatchback: 'Hatchback',
+  suv: 'SUV',
+  furgon: 'Furgón',
+  pickup: 'Pick up',
+}
+
 function formatoMoneda(numero) {
   if (numero === null || numero === undefined) return '—'
   return numero.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
@@ -69,6 +77,12 @@ function TrabajoDetalle() {
   const [tecnicoTarea, setTecnicoTarea] = useState('')
   const [guardandoTarea, setGuardandoTarea] = useState(false)
 
+  const [catalogoServicios, setCatalogoServicios] = useState([])
+  const [categoriaCatalogo, setCategoriaCatalogo] = useState('')
+  const [servicioCatalogo, setServicioCatalogo] = useState('')
+  const [tecnicoCatalogo, setTecnicoCatalogo] = useState('')
+  const [agregandoServicioCatalogo, setAgregandoServicioCatalogo] = useState(false)
+
   const [areaDetalle, setAreaDetalle] = useState('repuestos')
   const [detalleTexto, setDetalleTexto] = useState('')
   const [cantidadDetalle, setCantidadDetalle] = useState('1')
@@ -109,7 +123,7 @@ function TrabajoDetalle() {
       ] = await Promise.all([
         supabase
           .from('trabajos_taller')
-          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, numero_documento_facturacion, tipo_documento, estado_pago, fecha_vencimiento_pago, fecha_entrega, vehiculo_id, bloqueada_en, reabierta_en, clientes(nombre, apellido, razon_social, rut, tipo, telefono, telefono_norm), vehiculos(patente, marca, modelo, anio, kilometraje)')
+          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, numero_documento_facturacion, tipo_documento, estado_pago, fecha_vencimiento_pago, fecha_entrega, vehiculo_id, bloqueada_en, reabierta_en, clientes(nombre, apellido, razon_social, rut, tipo, telefono, telefono_norm), vehiculos(patente, marca, modelo, anio, kilometraje, tipo_carroceria, tipo_combustible)')
           .eq('id', id)
           .maybeSingle(),
         supabase
@@ -158,6 +172,23 @@ function TrabajoDetalle() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
+  // El catálogo de servicios/precios es de la empresa, no de esta OT
+  // puntual: se carga una sola vez, no cada vez que cargarTodo() refresca
+  // tareas/ítems después de una acción.
+  useEffect(() => {
+    async function cargarCatalogo() {
+      const { data } = await supabase
+        .from('catalogo_servicios')
+        .select('id, segmento, categoria, servicio')
+        .eq('activo', true)
+        .order('segmento')
+        .order('categoria')
+        .order('servicio')
+      setCatalogoServicios(data || [])
+    }
+    cargarCatalogo()
+  }, [])
+
   // Precarga los datos de "quien retira" con el cliente registrado -el
   // asesor los corrige si en realidad retira otra persona (conductor)-,
   // solo una vez para no pisar lo que el asesor ya haya escrito.
@@ -191,6 +222,31 @@ function TrabajoDetalle() {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
     } finally {
       setGuardandoTarea(false)
+    }
+  }
+
+  async function agregarServicioCatalogo(evento) {
+    evento.preventDefault()
+    if (!servicioCatalogo) return
+    setAgregandoServicioCatalogo(true)
+    setError(null)
+    try {
+      const { error: errorRpc } = await supabase.rpc('agregar_servicio_catalogo', {
+        p_trabajo_id: id,
+        p_servicio_id: servicioCatalogo,
+        p_tecnico_id: tecnicoCatalogo || null,
+      })
+      if (errorRpc) {
+        setError(errorRpc.message)
+        return
+      }
+      setServicioCatalogo('')
+      setTecnicoCatalogo('')
+      await cargarTodo()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setAgregandoServicioCatalogo(false)
     }
   }
 
@@ -449,6 +505,16 @@ function TrabajoDetalle() {
   const bloqueada = !!trabajo.bloqueada_en
   const reabierta = trabajo.estado === 'entregado' && !bloqueada
 
+  // Agrupa el catálogo por segmento (isla) -> categoría, para las dos
+  // listas encadenadas (categoría primero, servicio filtrado después).
+  const categoriasPorSegmento = new Map()
+  for (const s of catalogoServicios) {
+    if (!categoriasPorSegmento.has(s.segmento)) categoriasPorSegmento.set(s.segmento, new Set())
+    categoriasPorSegmento.get(s.segmento).add(s.categoria)
+  }
+  const serviciosDeCategoria = catalogoServicios.filter((s) => s.categoria === categoriaCatalogo)
+  const vehiculoCatalogo = trabajo.vehiculos
+
   return (
     <div className="p-6">
       <div className="mb-4 flex items-start justify-between">
@@ -534,6 +600,71 @@ function TrabajoDetalle() {
             </ul>
           )}
         </div>
+      )}
+
+      {!bloqueada && catalogoServicios.length > 0 && (
+        <section className="mb-6 max-w-4xl rounded border border-slate-200 bg-white p-4">
+          <h2 className="mb-1 text-lg font-semibold text-slate-900">Agregar servicio del catálogo</h2>
+          <p className="mb-3 text-xs text-slate-500">
+            Precio de mano de obra calculado para {ETIQUETA_CARROCERIA[vehiculoCatalogo?.tipo_carroceria] || 'este vehículo'} ·{' '}
+            {vehiculoCatalogo?.tipo_combustible === 'diesel' ? 'Diésel' : 'Bencina'}. Al elegir un servicio se agrega la tarea
+            de mano de obra con su precio, y los repuestos típicos como ítems pendientes de presupuesto -editables o
+            eliminables-.
+          </p>
+          <form onSubmit={agregarServicioCatalogo} className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+            <select
+              value={categoriaCatalogo}
+              onChange={(evento) => {
+                setCategoriaCatalogo(evento.target.value)
+                setServicioCatalogo('')
+              }}
+              className="rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">Categoría…</option>
+              {[...categoriasPorSegmento.entries()].map(([segmento, categorias]) => (
+                <optgroup key={segmento} label={segmento}>
+                  {[...categorias].sort().map((categoria) => (
+                    <option key={categoria} value={categoria}>
+                      {categoria}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <select
+              value={servicioCatalogo}
+              onChange={(evento) => setServicioCatalogo(evento.target.value)}
+              disabled={!categoriaCatalogo}
+              className="rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+            >
+              <option value="">Servicio…</option>
+              {serviciosDeCategoria.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.servicio}
+                </option>
+              ))}
+            </select>
+            <select
+              value={tecnicoCatalogo}
+              onChange={(evento) => setTecnicoCatalogo(evento.target.value)}
+              className="rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">Sin asignar todavía</option>
+              {tecnicos.map((tecnico) => (
+                <option key={tecnico.id} value={tecnico.id}>
+                  {tecnico.nombre_completo}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              disabled={!servicioCatalogo || agregandoServicioCatalogo}
+              className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {agregandoServicioCatalogo ? 'Agregando…' : 'Agregar servicio'}
+            </button>
+          </form>
+        </section>
       )}
 
       <div className="grid max-w-4xl grid-cols-1 gap-6 md:grid-cols-2">
