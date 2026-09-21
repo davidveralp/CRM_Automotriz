@@ -27,6 +27,7 @@ import { enviarCorreo } from '../_shared/brevo.ts'
 // (así se creó "POR DESIGNAR" en clickup-sincronizar, por ejemplo).
 const ESTADO_RETROCESO = 'retroceso'
 const ESTADO_LISTO_PARA_ENTREGA = 'listo para entrega'
+const ESTADO_COMPRA_REPTOS = 'compra reptos'
 
 async function firmaValida(cuerpoCrudo: string, firmaRecibida: string | null): Promise<boolean> {
   const secreto = Deno.env.get('CLICKUP_WEBHOOK_SECRET')
@@ -178,6 +179,16 @@ Deno.serve(async (req) => {
       // reenviar en cada evento mientras la tarjeta sigue en este estado-.
       if (estadoClickUp === ESTADO_LISTO_PARA_ENTREGA && trabajo.clickup_estado_actual !== ESTADO_LISTO_PARA_ENTREGA) {
         await avisarListoParaEntrega(supabase, trabajo, registrarError)
+        await crearNotificacionListoParaEntrega(supabase, trabajo, registrarError)
+      }
+
+      // "Compra reptos": mismo criterio de transición que "listo para
+      // entrega", pero para jefe_taller/encargado_presupuestos (bodega). Se
+      // resuelve sola si la tarjeta avanza a cualquier otro estado.
+      if (estadoClickUp === ESTADO_COMPRA_REPTOS && trabajo.clickup_estado_actual !== ESTADO_COMPRA_REPTOS) {
+        await crearNotificacionCompraReptos(supabase, trabajo, registrarError)
+      } else if (estadoClickUp !== ESTADO_COMPRA_REPTOS && trabajo.clickup_estado_actual === ESTADO_COMPRA_REPTOS) {
+        await supabase.from('notificaciones').delete().eq('trabajo_id', trabajo.id).eq('tipo', 'compra_reptos_pendiente')
       }
 
       if (estadoClickUp && estadoClickUp !== trabajo.clickup_estado_actual) {
@@ -280,6 +291,61 @@ async function avisarListoParaEntrega(
   } catch (error) {
     await registrarError(trabajo.empresa_id, trabajo.id, 'aviso_listo_entrega', error)
   }
+}
+
+// Notificación en la app (además del correo) para el asesor ya asignado a
+// la OT -mismo destinatario, mismo criterio de "solo en la transición".
+async function crearNotificacionListoParaEntrega(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  trabajo: {
+    id: string
+    empresa_id: string
+    numero_ot: number
+    asesor_id: string | null
+    vehiculos: { patente: string } | { patente: string }[] | null
+  },
+  registrarError: (empresaId: string | null, trabajoId: string | null, operacion: string, error: unknown) => Promise<void>
+) {
+  if (!trabajo.asesor_id) return // ya quedó registrado el error en avisarListoParaEntrega
+
+  const vehiculo = Array.isArray(trabajo.vehiculos) ? trabajo.vehiculos[0] : trabajo.vehiculos
+
+  const { error } = await supabase.from('notificaciones').insert({
+    empresa_id: trabajo.empresa_id,
+    tipo: 'listo_para_entrega',
+    trabajo_id: trabajo.id,
+    usuario_destino_id: trabajo.asesor_id,
+    titulo: 'Vehículo listo para entrega',
+    mensaje: `${vehiculo?.patente ?? 'Vehículo'} · OT ${trabajo.numero_ot} quedó listo para entrega. Contacta al cliente y registra el cobro.`,
+  })
+  if (error) await registrarError(trabajo.empresa_id, trabajo.id, 'notificacion_listo_entrega', error)
+}
+
+// Aviso para jefe_taller/encargado_presupuestos cuando ClickUp marca que
+// faltan repuestos por comprar -mismo grupo de acceso de /bodega-.
+async function crearNotificacionCompraReptos(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  trabajo: {
+    id: string
+    empresa_id: string
+    numero_ot: number
+    vehiculos: { patente: string } | { patente: string }[] | null
+  },
+  registrarError: (empresaId: string | null, trabajoId: string | null, operacion: string, error: unknown) => Promise<void>
+) {
+  const vehiculo = Array.isArray(trabajo.vehiculos) ? trabajo.vehiculos[0] : trabajo.vehiculos
+
+  const { error } = await supabase.from('notificaciones').insert({
+    empresa_id: trabajo.empresa_id,
+    tipo: 'compra_reptos_pendiente',
+    trabajo_id: trabajo.id,
+    roles_destino: ['jefe_taller', 'encargado_presupuestos'],
+    titulo: 'Repuestos pendientes de compra',
+    mensaje: `${vehiculo?.patente ?? 'Vehículo'} · OT ${trabajo.numero_ot} quedó en "Compra reptos": faltan repuestos por comprar.`,
+  })
+  if (error) await registrarError(trabajo.empresa_id, trabajo.id, 'notificacion_compra_reptos', error)
 }
 
 // Compara los checklists que trae ClickUp contra ot_detalle: marca
