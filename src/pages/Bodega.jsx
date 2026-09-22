@@ -526,7 +526,13 @@ function PanelProveedores({ empresaId, proveedores, onCerrar, onCambio }) {
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-black/30 p-4">
+    // items-start (no items-center): la lista de proveedores no tiene límite
+    // (se trae completa, sin paginar) y con varios proveedores el panel supera
+    // el alto de pantalla -mismo bug de FormularioNuevaCita en Agenda.jsx:
+    // con items-center, el contenido centrado se desplaza hacia arriba con un
+    // offset NEGATIVO que overflow-y-auto no puede alcanzar (scrollTop no baja
+    // de 0). Confirmado en el navegador con una lista larga de proveedores.
+    <div className="fixed inset-0 flex items-start justify-center overflow-y-auto bg-black/30 p-4">
       <div className="my-8 w-full max-w-lg rounded-lg bg-white p-6 shadow-lg">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Proveedores</h2>

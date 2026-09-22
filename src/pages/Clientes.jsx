@@ -214,10 +214,19 @@ function FormularioNuevoCliente({ empresaId, onCancelar, onCreado }) {
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/30 p-4">
+    // items-start + overflow-y-auto (no items-center sin overflow): la lista de
+    // posibles duplicados no tiene límite visual -el RPC devuelve hasta 10- y con
+    // varios duplicados el formulario supera el alto de pantalla. Este modal ni
+    // siquiera tenía overflow-y-auto, así que sin este fix no hay forma de hacer
+    // scroll: el botón "Guardar" queda inalcanzable, no solo el encabezado -peor
+    // que el bug de FormularioNuevaCita en Agenda.jsx (con items-center +
+    // overflow-y-auto, el contenido se centra con un offset NEGATIVO que
+    // overflow-y-auto tampoco puede alcanzar). Confirmado en el navegador con 10
+    // duplicados (el máximo real que devuelve clientes_buscar_posibles_duplicados).
+    <div className="fixed inset-0 flex items-start justify-center overflow-y-auto bg-black/30 p-4">
       <form
         onSubmit={manejarEnvio}
-        className="w-full max-w-lg rounded-lg bg-white p-6 shadow-lg"
+        className="my-8 w-full max-w-lg rounded-lg bg-white p-6 shadow-lg"
       >
         <h2 className="mb-4 text-lg font-semibold text-slate-900">Nuevo cliente</h2>
 
