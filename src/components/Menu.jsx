@@ -44,6 +44,9 @@ function Menu() {
           <NavLink to="/agenda" className={claseEnlace}>
             Agenda
           </NavLink>
+          <NavLink to="/mensajes" className={claseEnlace}>
+            Mensajes
+          </NavLink>
           <NavLink to="/ingresos/nuevo" className={claseEnlace}>
             Nuevo ingreso
           </NavLink>

@@ -10,6 +10,8 @@ const ETIQUETA_TIPO = {
   listo_para_entrega: 'Listo para entrega',
   compra_reptos_pendiente: 'Compra de repuestos',
   factura_vencida: 'Factura vencida',
+  whatsapp_desconectado: 'WhatsApp desconectado',
+  repuesto_pendiente_presupuesto: 'Repuesto sin presupuesto',
 }
 
 const COLOR_TIPO = {
@@ -19,6 +21,8 @@ const COLOR_TIPO = {
   listo_para_entrega: 'border-l-emerald-500',
   compra_reptos_pendiente: 'border-l-orange-400',
   factura_vencida: 'border-l-red-500',
+  whatsapp_desconectado: 'border-l-red-500',
+  repuesto_pendiente_presupuesto: 'border-l-amber-400',
 }
 
 // Mismo grupo de acceso que /cuentas-por-cobrar (App.jsx): admin/socia ya

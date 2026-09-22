@@ -24,6 +24,7 @@ import PresupuestoDetalle from './pages/PresupuestoDetalle'
 import OrdenEgreso from './pages/OrdenEgreso'
 import CuentasPorCobrar from './pages/CuentasPorCobrar'
 import PuntoVenta from './pages/PuntoVenta'
+import Mensajes from './pages/Mensajes'
 
 function Layout({ children }) {
   return (
@@ -62,6 +63,10 @@ function App() {
           <Route path="/oportunidades" element={paginaProtegida(<Oportunidades />)} />
           <Route path="/encuestas" element={paginaProtegida(<Encuestas />)} />
           <Route path="/agenda" element={paginaProtegida(<Agenda />)} />
+          <Route
+            path="/mensajes"
+            element={paginaProtegida(<Mensajes />, ['admin', 'socia', 'asesor', 'recepcionista', 'jefe_taller'])}
+          />
           <Route
             path="/taller"
             element={paginaProtegida(<TallerIslas />, ['admin', 'socia', 'jefe_taller'])}
