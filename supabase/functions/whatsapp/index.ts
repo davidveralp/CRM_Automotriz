@@ -41,6 +41,18 @@ const GRAPH_BASE = 'https://graph.facebook.com/v23.0'
 // de UPDATE de whatsapp_contactos en 0032_whatsapp_recepcion.sql-.
 const ROLES_PUEDEN_ENVIAR = ['asesor', 'recepcionista', 'jefe_taller', 'admin', 'socia']
 
+// Bot de agendamiento (0034_agenda_calendario_y_bot.sql): menú guiado por
+// números, sin IA -confirmado con el cliente 2026-09-22-. Los 3 segmentos
+// son los únicos que existen en catalogo_servicios; el texto es solo la
+// etiqueta amigable que ve el cliente, "valor" es lo que se guarda/consulta.
+const SEGMENTOS_BOT = [
+  { etiqueta: 'Mecánica general', valor: 'Taller Mecánico' },
+  { etiqueta: 'Servicio rápido (aceite, filtros, alineación, etc.)', valor: 'Servicio Rápido' },
+  { etiqueta: 'Pintura, desabolladura o lavado', valor: 'DyP' },
+]
+
+const TAMANO_PAGINA_BOT = 9
+
 // deno-lint-ignore no-explicit-any
 type Cambio = { field: string; value: Record<string, any> }
 type Entrada = { id: string; changes?: Cambio[] }
@@ -279,6 +291,9 @@ async function procesarMensajes(supabase: any, valor: Record<string, any>) {
       { onConflict: 'wamid', ignoreDuplicates: true }
     )
     if (error) console.error('whatsapp: error insertando mensaje entrante', error)
+
+    const contacto = await obtenerContacto(supabase, phoneNumberId, mensaje.from)
+    await manejarBot(supabase, contacto, mensaje)
   }
 
   for (const estado of valor.statuses ?? []) {
@@ -300,6 +315,9 @@ async function procesarEcos(supabase: any, valor: Record<string, any>) {
 
   for (const eco of valor.message_echoes ?? []) {
     await registrarContacto(supabase, empresaId, phoneNumberId, eco.to, null)
+    // Un humano respondió desde la app del celular: el bot no debe seguir
+    // contestando por encima -mismo criterio que un envío desde el panel-.
+    await supabase.from('whatsapp_contactos').update({ bot_pausado: true }).eq('phone_number_id', phoneNumberId).eq('wa_id', eco.to)
 
     const { error } = await supabase.from('whatsapp_mensajes').upsert(
       {
@@ -444,10 +462,35 @@ async function procesarEventoCuenta(supabase: any, wabaIdEntrada: string, valor:
 }
 
 // ---------------------------------------------------------------------------
+// Llamada real a la Graph API para mandar un mensaje de texto. No registra
+// nada en la base -eso lo hace quien llama, según si es un envío humano
+// (manejarEnvio) o del bot (enviarBot)-, para no forzar a este helper a
+// conocer empresa_id ni el resto del contexto de cada caso.
+// ---------------------------------------------------------------------------
+async function enviarTexto(phoneNumberId: string, waId: string, texto: string): Promise<{ ok: boolean; resultado: unknown }> {
+  const respuesta = await fetch(`${GRAPH_BASE}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${Deno.env.get('WA_TOKEN')}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ messaging_product: 'whatsapp', to: waId, type: 'text', text: { body: texto } }),
+  })
+  const resultado = await respuesta.json()
+  return { ok: respuesta.ok, resultado }
+}
+
+// deno-lint-ignore no-explicit-any
+function wamidDe(resultado: any): string | undefined {
+  return resultado?.messages?.[0]?.id
+}
+
+// ---------------------------------------------------------------------------
 // Acción propia del CRM: enviar un mensaje de texto desde el panel de
-// Recepción. Protegida con CRM_SECRET (fix del documento original: la rama
-// de envío no verificaba quién llamaba, y Verify JWT está OFF a propósito
-// para que Meta pueda llamar al webhook sin sesión de Supabase).
+// Recepción. Verificada por sesión real de Supabase (ver Deno.serve arriba),
+// no por un secreto estático. Al enviar, se marca bot_pausado=true -un
+// humano ya está atendiendo esta conversación, el bot no debe seguir
+// contestando por encima de lo que Recepción está escribiendo-.
 // ---------------------------------------------------------------------------
 // deno-lint-ignore no-explicit-any
 async function manejarEnvio(supabase: any, empresaId: string, body: Record<string, any>): Promise<Response> {
@@ -468,21 +511,12 @@ async function manejarEnvio(supabase: any, empresaId: string, body: Record<strin
     return json({ error: { mensaje: 'Esa cuenta de WhatsApp no pertenece a tu empresa.' } }, 403)
   }
 
-  const respuesta = await fetch(`${GRAPH_BASE}/${phoneNumberId}/messages`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${Deno.env.get('WA_TOKEN')}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ messaging_product: 'whatsapp', to: waId, type: 'text', text: { body: texto } }),
-  })
-
-  const resultado = await respuesta.json()
-  if (!respuesta.ok) {
+  const { ok, resultado } = await enviarTexto(phoneNumberId, waId, texto)
+  if (!ok) {
     return json({ error: { mensaje: 'Meta rechazó el envío.', detalle: resultado } }, 502)
   }
 
-  const wamid = resultado.messages?.[0]?.id
+  const wamid = wamidDe(resultado)
 
   if (wamid) {
     const { error } = await supabase.from('whatsapp_mensajes').upsert(
@@ -503,7 +537,410 @@ async function manejarEnvio(supabase: any, empresaId: string, body: Record<strin
     if (error) console.error('whatsapp: error registrando mensaje enviado', error)
 
     await registrarContacto(supabase, empresaId, phoneNumberId, waId, null)
+    await supabase.from('whatsapp_contactos').update({ bot_pausado: true }).eq('phone_number_id', phoneNumberId).eq('wa_id', waId)
   }
 
   return json({ ok: true, wamid })
+}
+
+// ===========================================================================
+// Bot de agendamiento (0034_agenda_calendario_y_bot.sql). Menú guiado por
+// números -segmento → categoría → servicio → horario-, sin interpretar
+// texto libre. Se apoya en catalogo_isla_para_servicio/catalogo_horas_servicio
+// /citas_buscar_horarios (todas SQL, no reimplementadas acá) y agenda
+// directo apenas encuentra un horario -confirmado con el cliente
+// 2026-09-22-, reutilizando la notificación "cita nueva" que ya existe
+// (0031_notificaciones.sql) en vez de un aviso aparte.
+//
+// Estado de la conversación: whatsapp_contactos.bot_estado/bot_contexto.
+// bot_contexto guarda, para el paso actual, las opciones mostradas
+// (etiqueta visible + valor real) y la página, para poder traducir la
+// respuesta numérica del cliente sin volver a consultar la base.
+// ===========================================================================
+
+// deno-lint-ignore no-explicit-any
+async function obtenerContacto(supabase: any, phoneNumberId: string, waId: string) {
+  const { data } = await supabase.from('whatsapp_contactos').select('*').eq('phone_number_id', phoneNumberId).eq('wa_id', waId).maybeSingle()
+  return data
+}
+
+// deno-lint-ignore no-explicit-any
+async function enviarBot(supabase: any, contacto: any, texto: string) {
+  const { ok, resultado } = await enviarTexto(contacto.phone_number_id, contacto.wa_id, texto)
+  if (!ok) {
+    console.error('whatsapp: el bot no pudo enviar el mensaje', resultado)
+    return
+  }
+  const wamid = wamidDe(resultado)
+  if (!wamid) return
+  const { error } = await supabase.from('whatsapp_mensajes').upsert(
+    {
+      wamid,
+      empresa_id: contacto.empresa_id,
+      phone_number_id: contacto.phone_number_id,
+      wa_id: contacto.wa_id,
+      direccion: 'saliente',
+      origen: 'cloud_api',
+      tipo_mensaje: 'text',
+      contenido: { text: { body: texto } },
+      wa_timestamp: new Date().toISOString(),
+      payload_original: resultado,
+    },
+    { onConflict: 'wamid', ignoreDuplicates: true }
+  )
+  if (error) console.error('whatsapp: error registrando mensaje del bot', error)
+}
+
+// deno-lint-ignore no-explicit-any
+async function actualizarBotEstado(supabase: any, contacto: any, botEstado: string | null, botContexto: unknown, extra: Record<string, unknown> = {}) {
+  const { error } = await supabase
+    .from('whatsapp_contactos')
+    .update({ bot_estado: botEstado, bot_contexto: botContexto, ...extra })
+    .eq('id', contacto.id)
+  if (error) console.error('whatsapp: error actualizando estado del bot', error)
+}
+
+// Interpreta la respuesta numérica del cliente contra las opciones
+// guardadas en bot_contexto (ver mostrarPaginaBot). Nunca intenta entender
+// texto libre -si no es un número de la lista, es inválido-.
+// deno-lint-ignore no-explicit-any
+function resolverSeleccionBot(contexto: any, texto: string): { valor?: any; siguientePagina?: boolean; invalido?: boolean } {
+  const numero = Number((texto || '').trim())
+  const opciones = contexto?.opciones ?? []
+  const pagina = contexto?.pagina ?? 0
+  if (!Number.isInteger(numero)) return { invalido: true }
+
+  const inicio = pagina * TAMANO_PAGINA_BOT
+  if (numero === 0) {
+    if (opciones.length > inicio + TAMANO_PAGINA_BOT) return { siguientePagina: true }
+    return { invalido: true }
+  }
+  if (numero < 1 || numero > TAMANO_PAGINA_BOT) return { invalido: true }
+
+  const opcion = opciones[inicio + numero - 1]
+  if (!opcion) return { invalido: true }
+  return { valor: opcion.valor }
+}
+
+// Muestra una lista numerada (paginada de a 9 -Servicio Rápido/Taller
+// Mecánico tienen muchas categorías/servicios, no caben en un solo mensaje
+// legible-) y guarda el estado para poder resolver la respuesta.
+async function mostrarPaginaBot(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  // deno-lint-ignore no-explicit-any
+  contacto: any,
+  paso: string,
+  pregunta: string,
+  // deno-lint-ignore no-explicit-any
+  opciones: { etiqueta: string; valor: any }[],
+  contextoExtra: Record<string, unknown>,
+  pagina = 0
+) {
+  const inicio = pagina * TAMANO_PAGINA_BOT
+  const visibles = opciones.slice(inicio, inicio + TAMANO_PAGINA_BOT)
+  let texto = `${pregunta}\n\n`
+  visibles.forEach((opcion, indice) => {
+    texto += `${indice + 1}) ${opcion.etiqueta}\n`
+  })
+  if (opciones.length > inicio + TAMANO_PAGINA_BOT) texto += `0) Ver más opciones\n`
+  texto += `\nResponde con el número.`
+
+  await enviarBot(supabase, contacto, texto)
+  await actualizarBotEstado(supabase, contacto, paso, { ...contextoExtra, opciones, pagina })
+}
+
+function formatoFechaCortaBot(fechaIso: string): string {
+  const fecha = new Date(`${fechaIso}T00:00:00`)
+  return fecha.toLocaleDateString('es-CL', { weekday: 'long', day: '2-digit', month: '2-digit' })
+}
+
+// deno-lint-ignore no-explicit-any
+async function obtenerCategoriasBot(supabase: any, empresaId: string, segmento: string): Promise<string[]> {
+  const { data } = await supabase
+    .from('catalogo_servicios')
+    .select('categoria')
+    .eq('empresa_id', empresaId)
+    .eq('segmento', segmento)
+    .eq('activo', true)
+  const categorias = [...new Set((data ?? []).map((fila: { categoria: string }) => fila.categoria))] as string[]
+  return categorias.sort()
+}
+
+async function obtenerServiciosBot(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  empresaId: string,
+  segmento: string,
+  categoria: string
+): Promise<{ etiqueta: string; valor: string }[]> {
+  const { data } = await supabase
+    .from('catalogo_servicios')
+    .select('id, servicio')
+    .eq('empresa_id', empresaId)
+    .eq('segmento', segmento)
+    .eq('categoria', categoria)
+    .eq('activo', true)
+    .order('servicio')
+  return (data ?? []).map((fila: { id: string; servicio: string }) => ({ etiqueta: fila.servicio, valor: fila.id }))
+}
+
+// deno-lint-ignore no-explicit-any
+async function mostrarMenuPrincipalBot(supabase: any, contacto: any) {
+  const texto =
+    'Hola, soy el asistente de Servicio Automotriz Didial.\n¿En qué te podemos ayudar?\n\n1) Agendar una hora\n2) Hablar con un asesor\n\nResponde con el número de la opción.'
+  await enviarBot(supabase, contacto, texto)
+  await actualizarBotEstado(supabase, contacto, 'saludo', {})
+}
+
+// deno-lint-ignore no-explicit-any
+async function manejarSaludoBot(supabase: any, contacto: any, texto: string) {
+  const opcion = texto.trim()
+  if (opcion === '1') {
+    await mostrarPaginaBot(
+      supabase,
+      contacto,
+      'elige_segmento',
+      '¿Qué tipo de servicio necesitas?',
+      SEGMENTOS_BOT,
+      {}
+    )
+  } else if (opcion === '2') {
+    await enviarBot(supabase, contacto, 'Perfecto, un asesor te va a escribir a la brevedad.')
+    await actualizarBotEstado(supabase, contacto, null, null, { bot_pausado: true })
+  } else {
+    await enviarBot(supabase, contacto, 'No entendí tu respuesta. Responde 1 para agendar una hora o 2 para hablar con un asesor.')
+  }
+}
+
+// deno-lint-ignore no-explicit-any
+async function manejarEligeSegmentoBot(supabase: any, contacto: any, texto: string) {
+  const contexto = contacto.bot_contexto
+  const resultado = resolverSeleccionBot(contexto, texto)
+
+  if (resultado.siguientePagina) {
+    await mostrarPaginaBot(supabase, contacto, 'elige_segmento', '¿Qué tipo de servicio necesitas?', contexto.opciones, {}, (contexto.pagina ?? 0) + 1)
+    return
+  }
+  if (resultado.invalido) {
+    await enviarBot(supabase, contacto, 'No entendí tu respuesta. Responde con el número de la lista.')
+    return
+  }
+
+  const segmento = resultado.valor as string
+  const categorias = await obtenerCategoriasBot(supabase, contacto.empresa_id, segmento)
+  if (!categorias.length) {
+    await enviarBot(supabase, contacto, 'Por ahora no tenemos servicios cargados en esa categoría. Un asesor te va a contactar para coordinar directamente.')
+    await actualizarBotEstado(supabase, contacto, null, null, { bot_pausado: true })
+    return
+  }
+
+  const opciones = categorias.map((categoria) => ({ etiqueta: categoria, valor: categoria }))
+  await mostrarPaginaBot(supabase, contacto, 'elige_categoria', '¿Qué necesitas específicamente?', opciones, { segmento })
+}
+
+// deno-lint-ignore no-explicit-any
+async function manejarEligeCategoriaBot(supabase: any, contacto: any, texto: string) {
+  const contexto = contacto.bot_contexto
+  const resultado = resolverSeleccionBot(contexto, texto)
+
+  if (resultado.siguientePagina) {
+    await mostrarPaginaBot(supabase, contacto, 'elige_categoria', '¿Qué necesitas específicamente?', contexto.opciones, { segmento: contexto.segmento }, (contexto.pagina ?? 0) + 1)
+    return
+  }
+  if (resultado.invalido) {
+    await enviarBot(supabase, contacto, 'No entendí tu respuesta. Responde con el número de la lista.')
+    return
+  }
+
+  const categoria = resultado.valor as string
+  const servicios = await obtenerServiciosBot(supabase, contacto.empresa_id, contexto.segmento, categoria)
+  if (!servicios.length) {
+    await enviarBot(supabase, contacto, 'Por ahora no tenemos servicios cargados ahí. Un asesor te va a contactar para coordinar directamente.')
+    await actualizarBotEstado(supabase, contacto, null, null, { bot_pausado: true })
+    return
+  }
+
+  await mostrarPaginaBot(supabase, contacto, 'elige_servicio', 'Elige el servicio:', servicios, { segmento: contexto.segmento, categoria })
+}
+
+// deno-lint-ignore no-explicit-any
+async function manejarEligeServicioBot(supabase: any, contacto: any, texto: string) {
+  const contexto = contacto.bot_contexto
+  const resultado = resolverSeleccionBot(contexto, texto)
+
+  if (resultado.siguientePagina) {
+    await mostrarPaginaBot(
+      supabase,
+      contacto,
+      'elige_servicio',
+      'Elige el servicio:',
+      contexto.opciones,
+      { segmento: contexto.segmento, categoria: contexto.categoria },
+      (contexto.pagina ?? 0) + 1
+    )
+    return
+  }
+  if (resultado.invalido) {
+    await enviarBot(supabase, contacto, 'No entendí tu respuesta. Responde con el número de la lista.')
+    return
+  }
+
+  const servicioId = resultado.valor as string
+  // deno-lint-ignore no-explicit-any
+  const servicioEtiqueta = contexto.opciones.find((op: any) => op.valor === servicioId)?.etiqueta ?? 'Servicio'
+
+  const { data: tipoIslaId } = await supabase.rpc('catalogo_isla_para_servicio', { p_servicio_id: servicioId })
+  if (!tipoIslaId) {
+    await enviarBot(supabase, contacto, 'No pudimos ubicar ese servicio en nuestra agenda. Un asesor te va a contactar para coordinar directamente.')
+    await actualizarBotEstado(supabase, contacto, null, null, { bot_pausado: true })
+    return
+  }
+
+  // Duración genérica (sin distinguir tipo de vehículo/combustible: el bot
+  // todavía no pregunta la patente en esta primera versión) -si el
+  // catálogo no tiene una hora de mano de obra ni siquiera genérica para
+  // este servicio, se usa 60 min como resguardo, mejor sobreestimar que
+  // ofrecer un horario que en la práctica queda corto-.
+  const { data: horasMo } = await supabase.rpc('catalogo_horas_servicio', {
+    p_servicio_id: servicioId,
+    p_tipo_vehiculo: null,
+    p_combustible: null,
+  })
+  const duracionMinutos = horasMo ? Math.round(Number(horasMo) * 60) : 60
+
+  const { data: horarios } = await supabase.rpc('citas_buscar_horarios', {
+    p_tipo_isla_id: tipoIslaId,
+    p_duracion_minutos: duracionMinutos,
+    p_limite: 5,
+  })
+
+  if (!horarios?.length) {
+    await enviarBot(supabase, contacto, 'No encontramos horarios disponibles pronto para ese servicio. Un asesor te va a contactar para coordinar directamente.')
+    await actualizarBotEstado(supabase, contacto, null, null, { bot_pausado: true })
+    return
+  }
+
+  // deno-lint-ignore no-explicit-any
+  const opciones = horarios.map((horario: any) => ({
+    etiqueta: `${formatoFechaCortaBot(horario.fecha)} a las ${String(horario.hora).slice(0, 5)}`,
+    valor: { fecha: horario.fecha, hora: horario.hora, tipoIslaId, duracionMinutos, servicioId, servicioEtiqueta },
+  }))
+
+  await mostrarPaginaBot(supabase, contacto, 'elige_horario', `Encontramos estos horarios para "${servicioEtiqueta}":`, opciones, {})
+}
+
+async function confirmarReservaBot(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  // deno-lint-ignore no-explicit-any
+  contacto: any,
+  fecha: string,
+  hora: string,
+  tipoIslaId: string,
+  duracionMinutos: number,
+  servicioId: string,
+  servicioEtiqueta: string
+) {
+  let clienteId = contacto.cliente_id
+
+  if (!clienteId) {
+    const { data: nuevoCliente, error: errorCliente } = await supabase
+      .from('clientes')
+      .insert({
+        empresa_id: contacto.empresa_id,
+        tipo: 'persona',
+        nombre: contacto.nombre_whatsapp || 'Cliente WhatsApp',
+        telefono: contacto.wa_id,
+      })
+      .select('id')
+      .single()
+
+    if (errorCliente || !nuevoCliente) {
+      console.error('whatsapp: error creando cliente desde el bot', errorCliente)
+      await enviarBot(supabase, contacto, 'Tuvimos un problema agendando tu hora. Un asesor te va a contactar para coordinar directamente.')
+      await actualizarBotEstado(supabase, contacto, null, null, { bot_pausado: true })
+      return
+    }
+    clienteId = nuevoCliente.id
+    await supabase.from('whatsapp_contactos').update({ cliente_id: clienteId }).eq('id', contacto.id)
+  }
+
+  const { error: errorCita } = await supabase.from('citas').insert({
+    empresa_id: contacto.empresa_id,
+    tipo_isla_id: tipoIslaId,
+    cliente_id: clienteId,
+    vehiculo_id: contacto.vehiculo_id,
+    catalogo_servicio_id: servicioId,
+    fecha,
+    hora,
+    duracion_estimada_minutos: duracionMinutos,
+    descripcion: servicioEtiqueta,
+    origen: 'bot_whatsapp',
+  })
+
+  if (errorCita) {
+    console.error('whatsapp: error agendando cita desde el bot', errorCita)
+    await enviarBot(supabase, contacto, 'Tuvimos un problema agendando tu hora. Un asesor te va a contactar para coordinar directamente.')
+    await actualizarBotEstado(supabase, contacto, null, null, { bot_pausado: true })
+    return
+  }
+
+  await enviarBot(
+    supabase,
+    contacto,
+    `¡Listo! Tu hora quedó agendada para el ${formatoFechaCortaBot(fecha)} a las ${hora.slice(0, 5)} — ${servicioEtiqueta}.\nCualquier cambio, escríbenos por acá.`
+  )
+  await actualizarBotEstado(supabase, contacto, null, null, { estado: 'agendado' })
+}
+
+// deno-lint-ignore no-explicit-any
+async function manejarEligeHorarioBot(supabase: any, contacto: any, texto: string) {
+  const resultado = resolverSeleccionBot(contacto.bot_contexto, texto)
+
+  if (resultado.siguientePagina || resultado.invalido) {
+    await enviarBot(supabase, contacto, 'No entendí tu respuesta. Responde con el número de una de las horas mostradas.')
+    return
+  }
+
+  const { fecha, hora, tipoIslaId, duracionMinutos, servicioId, servicioEtiqueta } = resultado.valor
+  await confirmarReservaBot(supabase, contacto, fecha, hora, tipoIslaId, duracionMinutos, servicioId, servicioEtiqueta)
+}
+
+// Punto de entrada del bot: se llama desde procesarMensajes por cada
+// mensaje de texto entrante. "menu"/"reiniciar" en cualquier punto del
+// flujo lo reinicia -único mecanismo de recuperación, dado que no hay
+// interpretación de texto libre-.
+// deno-lint-ignore no-explicit-any
+async function manejarBot(supabase: any, contacto: any, mensaje: Record<string, any>) {
+  if (!contacto || contacto.bot_pausado) return
+  if (mensaje?.type !== 'text') return
+
+  const texto = (mensaje?.text?.body ?? '').trim()
+  if (!texto) return
+
+  if (['menu', 'menú', 'reiniciar'].includes(texto.toLowerCase())) {
+    await mostrarMenuPrincipalBot(supabase, contacto)
+    return
+  }
+
+  switch (contacto.bot_estado) {
+    case 'saludo':
+      await manejarSaludoBot(supabase, contacto, texto)
+      break
+    case 'elige_segmento':
+      await manejarEligeSegmentoBot(supabase, contacto, texto)
+      break
+    case 'elige_categoria':
+      await manejarEligeCategoriaBot(supabase, contacto, texto)
+      break
+    case 'elige_servicio':
+      await manejarEligeServicioBot(supabase, contacto, texto)
+      break
+    case 'elige_horario':
+      await manejarEligeHorarioBot(supabase, contacto, texto)
+      break
+    default:
+      await mostrarMenuPrincipalBot(supabase, contacto)
+  }
 }

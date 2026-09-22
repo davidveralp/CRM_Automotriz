@@ -79,7 +79,7 @@ function Mensajes() {
         supabase
           .from('whatsapp_contactos')
           .select(
-            'id, phone_number_id, wa_id, nombre_whatsapp, estado, cliente_id, vehiculo_id, actualizado_en, clientes(nombre, apellido, razon_social), vehiculos(patente, marca, modelo)'
+            'id, phone_number_id, wa_id, nombre_whatsapp, estado, cliente_id, vehiculo_id, bot_pausado, actualizado_en, clientes(nombre, apellido, razon_social), vehiculos(patente, marca, modelo)'
           )
           .order('actualizado_en', { ascending: false }),
         supabase
@@ -153,6 +153,24 @@ function Mensajes() {
       setContactos((anterior) => anterior.map((c) => (c.id === seleccionado.id ? { ...c, estado: nuevoEstado } : c)))
     } catch (excepcion) {
       setError(excepcion.message || 'No se pudo cambiar el estado.')
+    }
+  }
+
+  // El bot de agendamiento (0034_agenda_calendario_y_bot.sql) se pausa solo
+  // apenas alguien de Recepción responde -desde acá o desde la app del
+  // celular-, para no contestar por encima de una conversación humana.
+  // Reactivarlo también limpia bot_estado: si no, retomaría a mitad de un
+  // menú que el cliente ya olvidó.
+  async function cambiarBotPausado(pausado) {
+    if (!seleccionado) return
+    try {
+      const cambios = pausado ? { bot_pausado: true } : { bot_pausado: false, bot_estado: null, bot_contexto: null }
+      const { error: errorUpdate } = await supabase.from('whatsapp_contactos').update(cambios).eq('id', seleccionado.id)
+      if (errorUpdate) throw errorUpdate
+      setSeleccionado((anterior) => ({ ...anterior, bot_pausado: pausado }))
+      setContactos((anterior) => anterior.map((c) => (c.id === seleccionado.id ? { ...c, bot_pausado: pausado } : c)))
+    } catch (excepcion) {
+      setError(excepcion.message || 'No se pudo cambiar el estado del bot.')
     }
   }
 
@@ -236,6 +254,11 @@ function Mensajes() {
       if (errorEnvio) throw errorEnvio
       if (data?.error) throw new Error(data.error.mensaje || 'Meta rechazó el envío.')
       setTexto('')
+      // La función ya marcó bot_pausado=true del lado del servidor (un
+      // humano está respondiendo); se refleja acá para no esperar al
+      // próximo sondeo de la bandeja.
+      setSeleccionado((anterior) => ({ ...anterior, bot_pausado: true }))
+      setContactos((anterior) => anterior.map((c) => (c.id === seleccionado.id ? { ...c, bot_pausado: true } : c)))
       await cargarHilo(seleccionado)
     } catch (excepcion) {
       setError(excepcion.message || 'No se pudo enviar el mensaje.')
@@ -316,17 +339,33 @@ function Mensajes() {
                   </p>
                   <p className="text-xs text-slate-500">{seleccionado.wa_id}</p>
                 </div>
-                <select
-                  value={seleccionado.estado}
-                  onChange={(evento) => cambiarEstado(evento.target.value)}
-                  className="rounded border border-slate-300 px-2 py-1 text-xs"
-                >
-                  {Object.entries(ETIQUETA_ESTADO).map(([valor, etiqueta]) => (
-                    <option key={valor} value={valor}>
-                      {etiqueta}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`rounded px-2 py-1 text-[11px] font-medium ${
+                      seleccionado.bot_pausado ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-700'
+                    }`}
+                  >
+                    {seleccionado.bot_pausado ? 'Bot en pausa' : 'Bot activo'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => cambiarBotPausado(!seleccionado.bot_pausado)}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                  >
+                    {seleccionado.bot_pausado ? 'Reactivar bot' : 'Tomar la conversación'}
+                  </button>
+                  <select
+                    value={seleccionado.estado}
+                    onChange={(evento) => cambiarEstado(evento.target.value)}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs"
+                  >
+                    {Object.entries(ETIQUETA_ESTADO).map(([valor, etiqueta]) => (
+                      <option key={valor} value={valor}>
+                        {etiqueta}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="border-b border-slate-200 p-3">

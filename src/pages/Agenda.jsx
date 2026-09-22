@@ -12,21 +12,7 @@ const ETIQUETA_ESTADO = {
 }
 
 const ESTADOS_QUE_OCUPAN_CUPO = ['agendada', 'confirmada']
-
-// Pistas de duración típica por isla (solo ayuda visual al agendar, no se
-// guarda como default en la base): una mantención de taller mecánico dura
-// 1-2h de 8h disponibles, servicio rápido/alineación ~30 min, pintura no
-// tiene duración definida -ocupa el cupo hasta el cierre del día-.
-const PISTAS_DURACION = [
-  { patron: /mecánico/i, texto: 'Duración típica: 60–120 min.' },
-  { patron: /rápido/i, texto: 'Duración típica: 30 min.' },
-  { patron: /alineación/i, texto: 'Duración típica: 30 min.' },
-  { patron: /pintura/i, texto: 'Sin duración definida: deja el campo vacío, ocupa el cupo hasta el cierre del día.' },
-]
-
-function pistaDuracion(nombreIsla) {
-  return PISTAS_DURACION.find((p) => p.patron.test(nombreIsla || ''))?.texto || null
-}
+const PASO_BLOQUE_MINUTOS = 30
 
 function hoyISO() {
   return new Date().toISOString().slice(0, 10)
@@ -37,25 +23,52 @@ function horaAMinutos(hora) {
   return h * 60 + m
 }
 
-// Pico de ocupación simultánea de una isla en el día -no un conteo plano de
-// citas-: una cita sin duración (o sin hora) se trata como si ocupara el
-// cupo hasta el cierre del día calendario, mismo criterio que la función SQL
-// citas_cupos_disponibles.
-function picoOcupacion(citasIsla) {
-  const eventos = []
-  citasIsla.forEach((c) => {
+function minutosAHora(minutos) {
+  const h = String(Math.floor(minutos / 60)).padStart(2, '0')
+  const m = String(minutos % 60).padStart(2, '0')
+  return `${h}:${m}`
+}
+
+// new Date('YYYY-MM-DD') se interpreta como medianoche UTC: en Chile
+// (UTC-3/-4) eso puede caer en el día calendario ANTERIOR y dar el
+// dia_semana equivocado. Se arma la fecha con componentes locales en vez de
+// parsear el string ISO directo -mismo gotcha ya evitado en otras partes de
+// la app, documentado acá porque es la primera vez que se necesita el
+// día de la semana, no solo mostrar la fecha-.
+function diaSemanaDe(fechaISO) {
+  const [anio, mes, dia] = fechaISO.split('-').map(Number)
+  return new Date(anio, mes - 1, dia).getDay()
+}
+
+function generarBloques(apertura, cierre) {
+  const bloques = []
+  let actual = horaAMinutos(apertura)
+  const fin = horaAMinutos(cierre)
+  while (actual < fin) {
+    bloques.push(minutosAHora(actual))
+    actual += PASO_BLOQUE_MINUTOS
+  }
+  return bloques
+}
+
+// Ocupación de una isla en un bloque puntual, por solapamiento de horario
+// -mismo criterio que citas_cupos_disponibles (0010_agenda_duracion.sql):
+// sin hora/duración = ocupa hasta el cierre del día calendario-.
+function citasEnBloque(citasIsla, bloque) {
+  const inicioBloque = horaAMinutos(bloque)
+  const finBloque = inicioBloque + PASO_BLOQUE_MINUTOS
+  return citasIsla.filter((c) => {
+    if (!ESTADOS_QUE_OCUPAN_CUPO.includes(c.estado)) return false
     const inicio = c.hora ? horaAMinutos(c.hora) : 0
     const fin = c.duracion_estimada_minutos != null ? inicio + c.duracion_estimada_minutos : 24 * 60
-    eventos.push([inicio, 1], [fin, -1])
+    return inicio < finBloque && inicioBloque < fin
   })
-  eventos.sort((a, b) => a[0] - b[0] || a[1] - b[1])
-  let actual = 0
-  let pico = 0
-  for (const [, delta] of eventos) {
-    actual += delta
-    pico = Math.max(pico, actual)
-  }
-  return pico
+}
+
+function bloqueEnCorte(bloque, corte) {
+  if (!corte?.inicio || !corte?.fin) return false
+  const minuto = horaAMinutos(bloque)
+  return minuto >= horaAMinutos(corte.inicio) && minuto < horaAMinutos(corte.fin)
 }
 
 function nombreVisible(cliente) {
@@ -64,47 +77,68 @@ function nombreVisible(cliente) {
   return [cliente.nombre, cliente.apellido].filter(Boolean).join(' ')
 }
 
+function formatoFechaCorta(fechaISO) {
+  const [anio, mes, dia] = fechaISO.split('-').map(Number)
+  return new Date(anio, mes - 1, dia).toLocaleDateString('es-CL', { weekday: 'long', day: '2-digit', month: '2-digit' })
+}
+
 function Agenda() {
   const { usuario } = useAuth()
   const [fecha, setFecha] = useState(hoyISO())
   const [tiposIsla, setTiposIsla] = useState([])
   const [citas, setCitas] = useState([])
+  const [horariosAtencion, setHorariosAtencion] = useState([])
+  const [corteMediodia, setCorteMediodia] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
   const [mostrarFormulario, setMostrarFormulario] = useState(false)
+  const [prellenado, setPrellenado] = useState(null)
+
+  useEffect(() => {
+    async function cargarBase() {
+      try {
+        const [{ data: islas, error: errorIslas }, { data: horarios, error: errorHorarios }, { data: empresa, error: errorEmpresa }] =
+          await Promise.all([
+            supabase.from('tipos_isla').select('id, nombre, capacidad, orden, opera_en_corte').eq('activo', true).order('orden'),
+            supabase.from('horario_atencion').select('dia_semana, hora_apertura, hora_cierre').eq('empresa_id', usuario.empresa_id),
+            supabase.from('empresas').select('corte_mediodia_inicio, corte_mediodia_fin').eq('id', usuario.empresa_id).maybeSingle(),
+          ])
+        if (errorIslas) throw errorIslas
+        if (errorHorarios) throw errorHorarios
+        if (errorEmpresa) throw errorEmpresa
+        setTiposIsla(islas || [])
+        setHorariosAtencion(horarios || [])
+        setCorteMediodia(
+          empresa?.corte_mediodia_inicio ? { inicio: empresa.corte_mediodia_inicio, fin: empresa.corte_mediodia_fin } : null
+        )
+      } catch (excepcion) {
+        setError(excepcion.message || 'No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+      }
+    }
+    if (usuario?.empresa_id) cargarBase()
+  }, [usuario])
 
   async function cargar() {
     setCargando(true)
     setError(null)
     try {
-      const [{ data: islas, error: errorIslas }, { data: citasDia, error: errorCitas }] = await Promise.all([
-        supabase.from('tipos_isla').select('id, nombre, capacidad, orden').eq('activo', true).order('orden'),
-        supabase
-          .from('citas')
-          .select(
-            // trabajos_taller!citas_trabajo_id_fkey: desde el Bloque "ingreso
-            // desde cita" (2026-09-15) trabajos_taller.cita_id agregó una
-            // SEGUNDA relación entre estas dos tablas (la inversa de
-            // citas.trabajo_id). PostgREST ya no puede adivinar sola cuál
-            // usar para el embed -hay que nombrar la restricción a mano-.
-            'id, tipo_isla_id, fecha, hora, duracion_estimada_minutos, descripcion, estado, clientes(id, tipo, nombre, apellido, razon_social, telefono), vehiculos(id, patente, marca, modelo), trabajo_id, trabajos_taller!citas_trabajo_id_fkey(numero_ot)'
-          )
-          .eq('fecha', fecha)
-          .order('hora', { nullsFirst: true }),
-      ])
+      const { data: citasDia, error: errorCitas } = await supabase
+        .from('citas')
+        // trabajos_taller!citas_trabajo_id_fkey: desde el Bloque "ingreso
+        // desde cita" (2026-09-15) trabajos_taller.cita_id agregó una
+        // SEGUNDA relación entre estas dos tablas (la inversa de
+        // citas.trabajo_id). PostgREST ya no puede adivinar sola cuál
+        // usar para el embed -hay que nombrar la restricción a mano-.
+        .select(
+          'id, tipo_isla_id, fecha, hora, duracion_estimada_minutos, descripcion, estado, catalogo_servicio_id, origen, clientes(id, tipo, nombre, apellido, razon_social, telefono), vehiculos(id, patente, marca, modelo), trabajo_id, trabajos_taller!citas_trabajo_id_fkey(numero_ot)'
+        )
+        .eq('fecha', fecha)
+        .order('hora', { nullsFirst: true })
 
-      if (errorIslas) {
-        setError(errorIslas.message)
-        return
-      }
-      if (errorCitas) {
-        setError(errorCitas.message)
-        return
-      }
-      setTiposIsla(islas || [])
+      if (errorCitas) throw errorCitas
       setCitas(citasDia || [])
-    } catch {
-      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } catch (excepcion) {
+      setError(excepcion.message || 'No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
     } finally {
       setCargando(false)
     }
@@ -128,10 +162,13 @@ function Agenda() {
     }
   }
 
-  function picoDeIsla(tipoIslaId) {
-    const citasIsla = citas.filter((c) => c.tipo_isla_id === tipoIslaId && ESTADOS_QUE_OCUPAN_CUPO.includes(c.estado))
-    return picoOcupacion(citasIsla)
+  function abrirFormulario(prellenadoInicial) {
+    setPrellenado(prellenadoInicial || null)
+    setMostrarFormulario(true)
   }
+
+  const horarioDelDia = horariosAtencion.find((h) => h.dia_semana === diaSemanaDe(fecha))
+  const bloques = horarioDelDia ? generarBloques(horarioDelDia.hora_apertura, horarioDelDia.hora_cierre) : []
 
   return (
     <div className="p-6">
@@ -139,7 +176,7 @@ function Agenda() {
         <h1 className="text-xl font-semibold text-slate-900">Agenda</h1>
         <button
           type="button"
-          onClick={() => setMostrarFormulario(true)}
+          onClick={() => abrirFormulario(null)}
           className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
         >
           Nueva cita
@@ -154,29 +191,86 @@ function Agenda() {
           onChange={(evento) => setFecha(evento.target.value)}
           className="rounded border border-slate-300 px-3 py-2 text-sm"
         />
+        <span className="text-sm capitalize text-slate-500">{formatoFechaCorta(fecha)}</span>
       </div>
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-        {tiposIsla.map((isla) => {
-          const pico = picoDeIsla(isla.id)
-          const sobrecupo = pico > isla.capacidad
-          return (
-            <div
-              key={isla.id}
-              className={`rounded border p-3 text-sm ${
-                sobrecupo ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'
-              }`}
-            >
-              <p className="font-medium text-slate-800">{isla.nombre}</p>
-              <p className={sobrecupo ? 'text-amber-700' : 'text-slate-500'}>
-                {pico} / {isla.capacidad} en el peor momento del día
-              </p>
-            </div>
-          )
-        })}
-      </div>
+      {!horarioDelDia ? (
+        <p className="mb-6 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          El taller no atiende este día.
+        </p>
+      ) : (
+        <div className="mb-6 overflow-x-auto rounded border border-slate-200 bg-white">
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr>
+                <th className="sticky left-0 z-10 bg-slate-50 px-2 py-2 text-left font-medium text-slate-500">Hora</th>
+                {tiposIsla.map((isla) => (
+                  <th key={isla.id} className="border-l border-slate-100 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">
+                    {isla.nombre}
+                    <span className="block font-normal text-slate-400">capacidad {isla.capacidad}</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {bloques.map((bloque) => {
+                const enCorteGeneral = bloqueEnCorte(bloque, corteMediodia)
+                return (
+                  <tr key={bloque} className={enCorteGeneral ? 'bg-slate-50/60' : ''}>
+                    <td className="sticky left-0 z-10 bg-white px-2 py-1 text-slate-500">{bloque}</td>
+                    {tiposIsla.map((isla) => {
+                      const cerradoAqui = enCorteGeneral && !isla.opera_en_corte
+                      const citasIsla = citas.filter((c) => c.tipo_isla_id === isla.id)
+                      const ocupantes = cerradoAqui ? [] : citasEnBloque(citasIsla, bloque)
+                      const libres = isla.capacidad - ocupantes.length
+                      const citasQueEmpiezanAqui = citasIsla.filter((c) => c.hora === bloque)
+                      return (
+                        <td
+                          key={isla.id}
+                          className={`min-w-[140px] border-l border-slate-100 px-2 py-1 align-top ${
+                            cerradoAqui ? 'bg-slate-100' : libres <= 0 ? 'bg-red-50' : ''
+                          }`}
+                        >
+                          {cerradoAqui ? (
+                            <span className="text-[10px] text-slate-400">Cerrado (corte)</span>
+                          ) : (
+                            <>
+                              <span className={`text-[10px] ${libres <= 0 ? 'font-medium text-red-600' : 'text-slate-400'}`}>
+                                {ocupantes.length}/{isla.capacidad}
+                              </span>
+                              {citasQueEmpiezanAqui.map((c) => (
+                                <p
+                                  key={c.id}
+                                  title={c.descripcion || ''}
+                                  className="mt-0.5 truncate rounded bg-deep/10 px-1 py-0.5 text-[10px] text-deep"
+                                >
+                                  {nombreVisible(c.clientes) || 'Cita'}
+                                  {c.duracion_estimada_minutos ? ` (${c.duracion_estimada_minutos}m)` : ''}
+                                </p>
+                              ))}
+                              {libres > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => abrirFormulario({ tipoIslaId: isla.id, hora: bloque })}
+                                  className="mt-0.5 block w-full rounded border border-dashed border-slate-200 py-0.5 text-[10px] text-slate-400 hover:border-slate-400 hover:text-slate-600"
+                                >
+                                  + agendar
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
@@ -211,7 +305,14 @@ function Agenda() {
                   <td className="px-3 py-2 text-slate-600">
                     {cita.vehiculos ? `${cita.vehiculos.patente} — ${cita.vehiculos.marca} ${cita.vehiculos.modelo}` : 'Sin definir'}
                   </td>
-                  <td className="px-3 py-2 text-slate-600">{cita.descripcion || '—'}</td>
+                  <td className="px-3 py-2 text-slate-600">
+                    {cita.descripcion || '—'}
+                    {cita.origen === 'bot_whatsapp' && (
+                      <span className="ml-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                        agendada por WhatsApp
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     <select
                       value={cita.estado}
@@ -261,6 +362,7 @@ function Agenda() {
           usuarioId={usuario.id}
           tiposIsla={tiposIsla}
           fechaInicial={fecha}
+          prellenado={prellenado}
           onCancelar={() => setMostrarFormulario(false)}
           onCreada={() => {
             setMostrarFormulario(false)
@@ -272,13 +374,19 @@ function Agenda() {
   )
 }
 
-function FormularioNuevaCita({ empresaId, usuarioId, tiposIsla, fechaInicial, onCancelar, onCreada }) {
+function FormularioNuevaCita({ empresaId, usuarioId, tiposIsla, fechaInicial, prellenado, onCancelar, onCreada }) {
   const [fecha, setFecha] = useState(fechaInicial)
-  const [tipoIslaId, setTipoIslaId] = useState(tiposIsla[0]?.id || '')
-  const [hora, setHora] = useState('')
+  const [tipoIslaId, setTipoIslaId] = useState(prellenado?.tipoIslaId || tiposIsla[0]?.id || '')
+  const [hora, setHora] = useState(prellenado?.hora || '')
   const [duracionMinutos, setDuracionMinutos] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [cupos, setCupos] = useState(null)
+
+  const [catalogoServicios, setCatalogoServicios] = useState([])
+  const [categoriaCatalogo, setCategoriaCatalogo] = useState('')
+  const [servicioCatalogoId, setServicioCatalogoId] = useState('')
+  const [buscandoHorarios, setBuscandoHorarios] = useState(false)
+  const [horariosSugeridos, setHorariosSugeridos] = useState(null)
 
   const [terminoCliente, setTerminoCliente] = useState('')
   const [buscandoCliente, setBuscandoCliente] = useState(false)
@@ -295,6 +403,25 @@ function FormularioNuevaCita({ empresaId, usuarioId, tiposIsla, fechaInicial, on
   const [forzarSobrecupo, setForzarSobrecupo] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState(null)
+
+  useEffect(() => {
+    async function cargarCatalogo() {
+      try {
+        const { data } = await supabase
+          .from('catalogo_servicios')
+          .select('id, segmento, categoria, servicio')
+          .eq('activo', true)
+          .order('segmento')
+          .order('categoria')
+          .order('servicio')
+        setCatalogoServicios(data || [])
+      } catch {
+        // El buscador de horario por catálogo es una ayuda opcional: si no
+        // carga, el formulario manual sigue funcionando igual.
+      }
+    }
+    cargarCatalogo()
+  }, [])
 
   useEffect(() => {
     async function cargarCupos() {
@@ -314,6 +441,53 @@ function FormularioNuevaCita({ empresaId, usuarioId, tiposIsla, fechaInicial, on
     cargarCupos()
     setForzarSobrecupo(false)
   }, [tipoIslaId, fecha, hora, duracionMinutos])
+
+  async function buscarHorariosDisponibles() {
+    if (!servicioCatalogoId) return
+    setBuscandoHorarios(true)
+    setHorariosSugeridos(null)
+    setError(null)
+    try {
+      const { data: islaId, error: errorIsla } = await supabase.rpc('catalogo_isla_para_servicio', {
+        p_servicio_id: servicioCatalogoId,
+      })
+      if (errorIsla) throw errorIsla
+      if (!islaId) {
+        setError('No pudimos ubicar ese servicio en ninguna isla del taller. Agenda a mano.')
+        return
+      }
+
+      const { data: horasMo, error: errorHoras } = await supabase.rpc('catalogo_horas_servicio', {
+        p_servicio_id: servicioCatalogoId,
+        p_tipo_vehiculo: vehiculoId ? vehiculosCliente.find((v) => v.id === vehiculoId)?.tipo_carroceria : null,
+        p_combustible: null,
+      })
+      if (errorHoras) throw errorHoras
+      const duracion = horasMo ? Math.round(Number(horasMo) * 60) : 60
+
+      const { data: horarios, error: errorHorarios } = await supabase.rpc('citas_buscar_horarios', {
+        p_tipo_isla_id: islaId,
+        p_duracion_minutos: duracion,
+        p_fecha_desde: fecha,
+        p_limite: 6,
+      })
+      if (errorHorarios) throw errorHorarios
+
+      setTipoIslaId(islaId)
+      setDuracionMinutos(String(duracion))
+      setHorariosSugeridos(horarios || [])
+    } catch (excepcion) {
+      setError(excepcion.message || 'No se pudo buscar horarios disponibles.')
+    } finally {
+      setBuscandoHorarios(false)
+    }
+  }
+
+  function elegirHorarioSugerido(sugerido) {
+    setFecha(sugerido.fecha)
+    setHora(sugerido.hora.slice(0, 5))
+    setHorariosSugeridos(null)
+  }
 
   async function buscarCliente(evento) {
     evento.preventDefault()
@@ -356,7 +530,7 @@ function FormularioNuevaCita({ empresaId, usuarioId, tiposIsla, fechaInicial, on
     try {
       const { data, error: errorVehiculos } = await supabase
         .from('clientes_vehiculos')
-        .select('vehiculos(id, patente, marca, modelo)')
+        .select('vehiculos(id, patente, marca, modelo, tipo_carroceria)')
         .eq('cliente_id', cliente.id)
       if (!errorVehiculos) {
         setVehiculosCliente((data || []).map((v) => v.vehiculos).filter(Boolean))
@@ -406,6 +580,7 @@ function FormularioNuevaCita({ empresaId, usuarioId, tiposIsla, fechaInicial, on
         tipo_isla_id: tipoIslaId,
         cliente_id: clienteSeleccionado.id,
         vehiculo_id: vehiculoId || null,
+        catalogo_servicio_id: servicioCatalogoId || null,
         fecha,
         hora: hora || null,
         duracion_estimada_minutos: duracionMinutos ? Number(duracionMinutos) : null,
@@ -427,10 +602,89 @@ function FormularioNuevaCita({ empresaId, usuarioId, tiposIsla, fechaInicial, on
 
   const sinCupo = cupos !== null && cupos <= 0
 
+  // Agrupa el catálogo por segmento (isla) -> categoría, mismo criterio que
+  // el selector de "Agregar servicio del catálogo" de la ficha de la OT.
+  const categoriasPorSegmento = new Map()
+  for (const s of catalogoServicios) {
+    if (!categoriasPorSegmento.has(s.segmento)) categoriasPorSegmento.set(s.segmento, new Set())
+    categoriasPorSegmento.get(s.segmento).add(s.categoria)
+  }
+  const serviciosDeCategoria = catalogoServicios.filter((s) => s.categoria === categoriaCatalogo)
+
   return (
-    <div className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-black/30 p-4">
+    // items-start (no items-center): el formulario creció con el buscador
+    // por catálogo y ahora puede ser más alto que la pantalla -con
+    // items-center, un contenido más alto que el contenedor queda centrado
+    // usando desplazamiento NEGATIVO, y overflow-y-auto no puede hacer
+    // scroll hasta ahí (scrollTop no baja de 0): la parte de arriba del
+    // formulario quedaba inalcanzable. Encontrado probando el flujo
+    // completo en el navegador, no evidente solo mirando el código.
+    <div className="fixed inset-0 flex items-start justify-center overflow-y-auto bg-black/30 p-4">
       <form onSubmit={manejarEnvio} className="my-8 w-full max-w-lg rounded-lg bg-white p-6 shadow-lg">
         <h2 className="mb-4 text-lg font-semibold text-slate-900">Nueva cita</h2>
+
+        <div className="mb-4 rounded border border-slate-200 bg-slate-50 p-3">
+          <p className="mb-2 text-sm font-medium text-slate-700">Buscar por servicio (opcional)</p>
+          <div className="mb-2 grid grid-cols-2 gap-2">
+            <select
+              value={categoriaCatalogo}
+              onChange={(evento) => {
+                setCategoriaCatalogo(evento.target.value)
+                setServicioCatalogoId('')
+              }}
+              className="rounded border border-slate-300 px-2 py-2 text-sm"
+            >
+              <option value="">Categoría…</option>
+              {[...categoriasPorSegmento.entries()].map(([segmento, categorias]) => (
+                <optgroup key={segmento} label={segmento}>
+                  {[...categorias].map((categoria) => (
+                    <option key={categoria} value={categoria}>
+                      {categoria}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <select
+              value={servicioCatalogoId}
+              onChange={(evento) => setServicioCatalogoId(evento.target.value)}
+              disabled={!categoriaCatalogo}
+              className="rounded border border-slate-300 px-2 py-2 text-sm disabled:bg-slate-100"
+            >
+              <option value="">Servicio…</option>
+              {serviciosDeCategoria.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.servicio}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={buscarHorariosDisponibles}
+            disabled={!servicioCatalogoId || buscandoHorarios}
+            className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+          >
+            {buscandoHorarios ? 'Buscando…' : 'Buscar próximos horarios disponibles'}
+          </button>
+          {horariosSugeridos && horariosSugeridos.length === 0 && (
+            <p className="mt-2 text-xs text-amber-700">Sin horarios disponibles pronto para ese servicio. Prueba con la isla/hora manual.</p>
+          )}
+          {horariosSugeridos && horariosSugeridos.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {horariosSugeridos.map((h) => (
+                <button
+                  key={`${h.fecha}-${h.hora}`}
+                  type="button"
+                  onClick={() => elegirHorarioSugerido(h)}
+                  className="rounded border border-deep/30 bg-deep/5 px-2 py-1 text-xs text-deep hover:bg-deep/10"
+                >
+                  {formatoFechaCorta(h.fecha)} {h.hora.slice(0, 5)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="mb-3">
           <label className="mb-1 block text-sm font-medium text-slate-700">Fecha</label>
@@ -482,11 +736,6 @@ function FormularioNuevaCita({ empresaId, usuarioId, tiposIsla, fechaInicial, on
         </div>
 
         <div className="mb-3">
-          {pistaDuracion(tiposIsla.find((i) => i.id === tipoIslaId)?.nombre) && (
-            <p className="mb-1 text-xs text-slate-400">
-              {pistaDuracion(tiposIsla.find((i) => i.id === tipoIslaId)?.nombre)}
-            </p>
-          )}
           {cupos !== null && (
             <p className={`text-xs ${sinCupo ? 'text-amber-700' : 'text-slate-500'}`}>
               {sinCupo
