@@ -71,7 +71,7 @@ function Login() {
 
         <div className="relative z-10 max-w-md text-center lg:text-left">
           <div className="inline-block rounded-2xl bg-white px-7 py-6 shadow-2xl">
-            <img src="/logo-didial.png" alt="Servicio Automotriz Didial" className="h-16 w-auto lg:h-20" />
+            <img src="/logo-completo-didial.png" alt="Servicio Automotriz Didial" className="h-16 w-auto lg:h-20" />
           </div>
           <h1 className="mt-8 text-3xl font-bold leading-tight text-white lg:text-4xl">
             Gestión <span className="text-didial-amber">del taller</span>
@@ -89,7 +89,7 @@ function Login() {
       <div className="flex items-center justify-center bg-white px-6 py-12 lg:w-2/5">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex justify-center lg:hidden">
-            <img src="/logo-didial.png" alt="Didial" className="h-12 w-auto" />
+            <img src="/logo-completo-didial.png" alt="Didial" className="h-12 w-auto" />
           </div>
 
           <h2 className="text-2xl font-bold text-ink">Iniciar sesión</h2>
