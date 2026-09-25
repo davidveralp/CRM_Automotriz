@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2026-09-25 — Lista de ClickUp separada para la demo (`0043_clickup_lista_demo.sql`)
+
+**Qué se entrega:** el tenant de demostración se sincroniza con su propia lista de ClickUp, sin tocar las tarjetas del taller real. Mismo espacio de trabajo (`90132937173`), así que el mismo token de API alcanza ambas listas.
+
+- **Real (sin cambios):** Didial sigue con la lista de trabajos `901324296305` (ya configurada en `0004`; la URL de tablero `.../v/b/6-901324296305-2` es una vista de esa misma lista). La migración solo la verifica.
+- **Demo:** `clickup_config` del tenant demo apunta a la lista `901329160662`, sin lista de RADAR (la sincronización de RADAR no usa esa columna todavía). `clickup-sincronizar` ya leía la lista por empresa, así que una OT de la demo crea su tarjeta en la lista demo sin cambios de código.
+- **Webhook de vuelta (ClickUp hacia el CRM):** cada webhook de ClickUp trae su propio secreto, y la función solo verificaba uno. `clickup-webhook` (v12, `verify_jwt` sigue en false) ahora acepta `CLICKUP_WEBHOOK_SECRET` (lista real) y `CLICKUP_WEBHOOK_SECRET_DEMO` (lista demo, opcional). La empresa del evento se resuelve por el `clickup_task_id` de la OT, así que un evento de la lista demo nunca toca datos reales. Verificado: una firma falsa sigue dando 401.
+- **`scripts/clickup-demo.mjs`:** `verificar` compara los estados de las dos listas (la demo necesita los mismos nombres, porque el CRM crea tarjetas en "agenda" o "POR DESIGNAR" y reacciona a varios más) y lista los webhooks existentes; `webhook` crea el webhook de la lista demo con los mismos eventos que el real y guarda su secreto directamente en Supabase por un archivo temporal, sin imprimirlo. El token de ClickUp lo pone la persona en su entorno; nunca se guarda ni se muestra.
+- **Pendiente de la persona:** ejecutar `0043`, correr `verificar`, crear en la lista demo los estados que falten y correr `webhook`.
+
 ## 2026-09-25 — Los datos de prueba viven solo en la demo
 
 **Qué se hizo:** se eliminaron del tenant real de Didial los registros de prueba de sesiones anteriores, para que los datos de prueba existan únicamente en el tenant de demostración (aislado por `empresa_id`/RLS; comprobado que una cuenta real no ve los datos de la demo).

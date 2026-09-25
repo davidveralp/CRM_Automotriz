@@ -29,23 +29,32 @@ const ESTADO_RETROCESO = 'retroceso'
 const ESTADO_LISTO_PARA_ENTREGA = 'listo para entrega'
 const ESTADO_COMPRA_REPTOS = 'compra reptos'
 
+// Cada webhook de ClickUp trae su propio secreto: el de la lista real de Didial
+// (CLICKUP_WEBHOOK_SECRET) y el de la lista de la demo (CLICKUP_WEBHOOK_SECRET_DEMO,
+// opcional). La firma es válida si coincide con cualquiera de los configurados;
+// la empresa del evento se resuelve luego por el clickup_task_id de la OT, así
+// que un evento de la lista demo nunca toca datos de la empresa real.
 async function firmaValida(cuerpoCrudo: string, firmaRecibida: string | null): Promise<boolean> {
-  const secreto = Deno.env.get('CLICKUP_WEBHOOK_SECRET')
-  if (!secreto || !firmaRecibida) return false
-
-  const claveCripto = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secreto),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
+  const secretos = [Deno.env.get('CLICKUP_WEBHOOK_SECRET'), Deno.env.get('CLICKUP_WEBHOOK_SECRET_DEMO')].filter(
+    (secreto): secreto is string => Boolean(secreto)
   )
-  const firma = await crypto.subtle.sign('HMAC', claveCripto, new TextEncoder().encode(cuerpoCrudo))
-  const firmaHex = Array.from(new Uint8Array(firma))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
+  if (secretos.length === 0 || !firmaRecibida) return false
 
-  return firmaHex === firmaRecibida
+  for (const secreto of secretos) {
+    const claveCripto = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(secreto),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    )
+    const firma = await crypto.subtle.sign('HMAC', claveCripto, new TextEncoder().encode(cuerpoCrudo))
+    const firmaHex = Array.from(new Uint8Array(firma))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+    if (firmaHex === firmaRecibida) return true
+  }
+  return false
 }
 
 Deno.serve(async (req) => {
