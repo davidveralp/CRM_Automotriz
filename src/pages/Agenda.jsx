@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
-
+import { invocarFuncion } from '../lib/invocarFuncion'
 import { formatearPatente } from '../lib/patente'
+
 const ETIQUETA_ESTADO = {
   agendada: 'Agendada',
   confirmada: 'Confirmada',
@@ -94,6 +95,9 @@ function Agenda() {
   const [error, setError] = useState(null)
   const [mostrarFormulario, setMostrarFormulario] = useState(false)
   const [prellenado, setPrellenado] = useState(null)
+  const [avisoClickUp, setAvisoClickUp] = useState(null)
+  const sincronizandoClickUp = useRef(false)
+  const [recargas, setRecargas] = useState(0)
 
   useEffect(() => {
     async function cargarBase() {
@@ -119,6 +123,32 @@ function Agenda() {
     if (usuario?.empresa_id) cargarBase()
   }, [usuario])
 
+  // Cada cita agendada (a mano o por el bot) crea su tarjeta en ClickUp, en el
+  // estado "agenda". La base marca las citas pendientes (clickup_pendiente) y la
+  // función clickup-agendar-cita las procesa: se llama al guardar una cita y al
+  // abrir la Agenda, así se reintentan las que fallaron. Nunca bloquea la
+  // pantalla: si falla, la cita ya está guardada y solo se avisa.
+  async function sincronizarClickUp() {
+    if (sincronizandoClickUp.current) return
+    sincronizandoClickUp.current = true
+    try {
+      const resultado = await invocarFuncion('clickup-agendar-cita', { body: {} })
+      if (resultado?.errores?.length) {
+        setAvisoClickUp(
+          `No se pudo enviar ${resultado.errores.length} cita(s) a ClickUp (${resultado.errores[0].mensaje}). Se reintentará al abrir la Agenda.`
+        )
+      } else {
+        setAvisoClickUp(null)
+        // Recarga la lista para mostrar la marca "en ClickUp" de lo recién enviado.
+        if (resultado?.procesadas > 0) setRecargas((n) => n + 1)
+      }
+    } catch (excepcion) {
+      setAvisoClickUp(`La cita se guardó, pero no se pudo enviar a ClickUp: ${excepcion.message}`)
+    } finally {
+      sincronizandoClickUp.current = false
+    }
+  }
+
   async function cargar() {
     setCargando(true)
     setError(null)
@@ -131,13 +161,14 @@ function Agenda() {
         // citas.trabajo_id). PostgREST ya no puede adivinar sola cuál
         // usar para el embed -hay que nombrar la restricción a mano-.
         .select(
-          'id, tipo_isla_id, fecha, hora, duracion_estimada_minutos, descripcion, estado, catalogo_servicio_id, origen, clientes(id, tipo, nombre, apellido, razon_social, telefono), vehiculos(id, patente, marca, modelo), trabajo_id, trabajos_taller!citas_trabajo_id_fkey(numero_ot)'
+          'id, tipo_isla_id, fecha, hora, duracion_estimada_minutos, descripcion, estado, catalogo_servicio_id, origen, clickup_task_id, clickup_pendiente, clientes(id, tipo, nombre, apellido, razon_social, telefono), vehiculos(id, patente, marca, modelo), trabajo_id, trabajos_taller!citas_trabajo_id_fkey(numero_ot)'
         )
         .eq('fecha', fecha)
         .order('hora', { nullsFirst: true })
 
       if (errorCitas) throw errorCitas
       setCitas(citasDia || [])
+      if ((citasDia || []).some((cita) => cita.clickup_pendiente)) sincronizarClickUp()
     } catch (excepcion) {
       setError(excepcion.message || 'No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
     } finally {
@@ -148,7 +179,7 @@ function Agenda() {
   useEffect(() => {
     cargar()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fecha])
+  }, [fecha, recargas])
 
   async function actualizarEstado(id, estado) {
     try {
@@ -196,6 +227,11 @@ function Agenda() {
       </div>
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {avisoClickUp && (
+        <p role="status" className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {avisoClickUp}
+        </p>
+      )}
 
       {!horarioDelDia ? (
         <p className="mb-6 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
@@ -313,6 +349,9 @@ function Agenda() {
                         agendada por WhatsApp
                       </span>
                     )}
+                    {cita.clickup_task_id && (
+                      <span className="ml-1 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">en ClickUp</span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <select
@@ -368,6 +407,7 @@ function Agenda() {
           onCreada={() => {
             setMostrarFormulario(false)
             cargar()
+            sincronizarClickUp()
           }}
         />
       )}

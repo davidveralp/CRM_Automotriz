@@ -64,6 +64,97 @@ async function listarWebhooks() {
   return webhooks || []
 }
 
+// IDs de los campos personalizados de la lista REAL (los mismos que hay fijos en
+// supabase/functions/_shared/clickup.ts; son identificadores, no secretos).
+const EMPRESA_DEMO = 'b0000000-0000-4000-8000-000000000001'
+const CAMPOS_REAL = {
+  datosCliente: '61ad3618-8fe4-49e8-9b74-9beae1e15ec5',
+  kilometraje: '077a8b3f-5b4d-4f1f-99c6-ea331b0ad6e2',
+  numeroOt: 'ffa27da5-0457-4ddc-be1a-4a365c09cf84',
+  observaciones: 'd2337ca4-7808-42ee-972a-40bfc0f83fec',
+  patente: 'c0783f36-567c-403d-be24-8fad9748b20b',
+  tipoServicio: '108bfea6-f304-46ed-887d-53488084d9a3',
+}
+const OPCIONES_REAL = {
+  taller_mecanico: '4bdfaf1d-cf1b-4e72-aa57-08721f7352af',
+  servicio_rapido: '4babdeb1-5a12-413f-bcea-c9bd2c310fe2',
+  dyp: '861d5027-3d4b-4427-b5fa-110e44d8e939',
+}
+
+const normalizar = (texto) =>
+  String(texto || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+
+const etiquetaOpcion = (opcion) => opcion.name ?? opcion.label ?? ''
+
+// Compara los campos personalizados de las dos listas POR NOMBRE. Si los IDs
+// de la lista demo son otros, imprime el SQL que los guarda en clickup_config.
+async function verificarCampos() {
+  const [{ fields: camposReal }, { fields: camposDemo }] = await Promise.all([
+    api(`/list/${LISTA_REAL}/field`),
+    api(`/list/${LISTA_DEMO}/field`),
+  ])
+
+  console.log('')
+  console.log(`Campos personalizados: real ${camposReal.length}, demo ${camposDemo.length}`)
+  console.log(`  demo: ${camposDemo.map((c) => `${c.name} (${c.type})`).join(' | ')}`)
+
+  const propios = {}
+  const problemas = []
+  for (const [clave, idReal] of Object.entries(CAMPOS_REAL)) {
+    const enReal = camposReal.find((c) => c.id === idReal)
+    if (!enReal) {
+      problemas.push(`El campo "${clave}" (${idReal}) ya no existe en la lista real: revisa supabase/functions/_shared/clickup.ts.`)
+      continue
+    }
+    const enDemo = camposDemo.find((c) => normalizar(c.name) === normalizar(enReal.name))
+    if (!enDemo) {
+      problemas.push(`Falta en la lista demo el campo "${enReal.name}" (tipo ${enReal.type}). Créalo con el mismo nombre y tipo.`)
+      continue
+    }
+    if (enDemo.type !== enReal.type) {
+      problemas.push(`El campo "${enReal.name}" es de tipo ${enDemo.type} en la demo y ${enReal.type} en la real.`)
+    }
+    propios[clave] = enDemo.id
+    console.log(`  ${clave}: "${enReal.name}" -> ${enDemo.id === idReal ? 'mismo ID que la real' : `ID propio ${enDemo.id}`}`)
+
+    if (clave === 'tipoServicio') {
+      const opcionesReal = enReal.type_config?.options || []
+      const opcionesDemo = enDemo.type_config?.options || []
+      const opciones = {}
+      for (const [categoria, idOpcionReal] of Object.entries(OPCIONES_REAL)) {
+        const etiqueta = etiquetaOpcion(opcionesReal.find((o) => o.id === idOpcionReal) || {})
+        const equivalente = opcionesDemo.find((o) => normalizar(etiquetaOpcion(o)) === normalizar(etiqueta))
+        if (!equivalente) problemas.push(`Falta en "Tipo de servicio" de la demo la opción "${etiqueta}".`)
+        else opciones[categoria] = equivalente.id
+      }
+      propios.opcionesTipoServicio = opciones
+    }
+  }
+
+  if (problemas.length > 0) {
+    console.log('')
+    console.log('PROBLEMAS con los campos personalizados de la lista demo:')
+    for (const problema of problemas) console.log(`  - ${problema}`)
+    return
+  }
+
+  const iguales =
+    Object.entries(CAMPOS_REAL).every(([clave, id]) => propios[clave] === id) &&
+    Object.entries(OPCIONES_REAL).every(([categoria, id]) => propios.opcionesTipoServicio?.[categoria] === id)
+  console.log('')
+  if (iguales) {
+    console.log('OK: los campos de la lista demo tienen los mismos IDs que los de la real; no hace falta configurar nada.')
+  } else {
+    console.log('Los IDs de la lista demo son distintos. Ejecuta este SQL en el editor de Supabase:')
+    console.log('')
+    console.log(`update public.clickup_config set campos = '${JSON.stringify(propios)}'::jsonb where empresa_id = '${EMPRESA_DEMO}';`)
+  }
+}
+
 async function verificar() {
   const [real, demo] = await Promise.all([leerLista(LISTA_REAL), leerLista(LISTA_DEMO)])
 
@@ -86,6 +177,8 @@ async function verificar() {
   }
   if (sobran.length > 0) console.log(`Estados extra en la demo (no es un problema): ${sobran.join(', ')}`)
 
+  await verificarCampos()
+
   console.log('')
   const webhooks = await listarWebhooks()
   console.log(`Webhooks del espacio de trabajo (${webhooks.length}):`)
@@ -94,7 +187,7 @@ async function verificar() {
     console.log(`  ${w.id} -> ${w.endpoint} | ${alcance} | eventos: ${(w.events || []).join(', ')} | estado: ${w.health?.status ?? '?'}`)
   }
   const propios = webhooks.filter((w) => w.endpoint === ENDPOINT)
-  const tieneDemo = propios.some((w) => w.list_id === LISTA_DEMO)
+  const tieneDemo = propios.some((w) => String(w.list_id) === LISTA_DEMO)
   console.log('')
   console.log(tieneDemo ? 'OK: ya hay un webhook para la lista demo.' : 'Falta el webhook de la lista demo: ejecuta "webhook".')
 }
@@ -102,14 +195,14 @@ async function verificar() {
 async function crearWebhook() {
   const existentes = await listarWebhooks()
   const propios = existentes.filter((w) => w.endpoint === ENDPOINT)
-  if (propios.some((w) => w.list_id === LISTA_DEMO)) {
+  if (propios.some((w) => String(w.list_id) === LISTA_DEMO)) {
     console.log('Ya existe un webhook para la lista demo; no se crea otro (su secreto no se puede volver a leer).')
     console.log('Si perdiste el secreto, borra ese webhook en ClickUp y vuelve a ejecutar este comando.')
     return
   }
 
   // Mismos eventos que el webhook real de esta función, si ya existe uno.
-  const referencia = propios.find((w) => !w.list_id || w.list_id === LISTA_REAL) || propios[0]
+  const referencia = propios.find((w) => !w.list_id || String(w.list_id) === LISTA_REAL) || propios[0]
   const eventos = referencia?.events?.length ? referencia.events : EVENTOS_POR_DEFECTO
 
   const creado = await api(`/team/${EQUIPO}/webhook`, {

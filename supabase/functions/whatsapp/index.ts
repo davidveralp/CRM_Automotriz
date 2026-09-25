@@ -34,6 +34,7 @@
 // `payload_original` se guarda siempre crudo en cada tabla para poder
 // reprocesar si algún nombre de campo resulta distinto en producción real.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { sincronizarCitasPendientes } from '../_shared/clickupCitas.ts'
 
 const GRAPH_BASE = 'https://graph.facebook.com/v23.0'
 
@@ -892,6 +893,15 @@ async function confirmarReservaBot(
     `¡Listo! Tu hora quedó agendada para el ${formatoFechaCortaBot(fecha)} a las ${hora.slice(0, 5)} — ${servicioEtiqueta}.\nCualquier cambio, escríbenos por acá.`
   )
   await actualizarBotEstado(supabase, contacto, null, null, { estado: 'agendado' })
+
+  // La cita agendada por el bot también va a ClickUp, en el estado "agenda".
+  // Se hace después de confirmarle al cliente, para no demorarlo; si falla, la
+  // cita ya existe y queda pendiente: se reintenta al abrir la Agenda.
+  try {
+    await sincronizarCitasPendientes(supabase, contacto.empresa_id)
+  } catch (error) {
+    console.error('whatsapp: no se pudo enviar la cita a ClickUp', error)
+  }
 }
 
 // deno-lint-ignore no-explicit-any
