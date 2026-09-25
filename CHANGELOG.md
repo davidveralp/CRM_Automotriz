@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2026-09-25 — Políticas al pie de los presupuestos (`0046_politicas_presupuesto.sql`)
+
+**Qué se entrega:** el presupuesto impreso lleva las políticas del taller según el caso de repuestos, en vez de la línea fija "vigencia de 30 días".
+
+- **Tres casos:** `sin_encargo` (presupuesto simple), `encargo` (repuestos por encargo, 2 a 3 días hábiles, con abono) e `importacion` (30 a 40 días hábiles, con abono). Todos incluyen validez de 5 días corridos, teléfono para coordinar la visita, horario de atención, aviso de modificación por desmontaje y datos de transferencia con el teléfono del comprobante (`+569 37401051`).
+- **Textos por empresa** en la tabla nueva `politicas_presupuesto` (una fila por empresa y caso, RLS por empresa; solo admin y socia pueden escribir). Nada de Didial queda fijo en el código. Por ahora se editan por SQL.
+- **Selector "Políticas del presupuesto"** en el detalle (`PresupuestoDetalle.jsx`, no se imprime), guardado en `presupuestos_taller.condiciones` (por defecto `sin_encargo`). Si el presupuesto tiene repuestos y sigue en "sin encargo", avisa que conviene revisar si hay que encargarlos.
+- **Demo:** mismos textos con teléfono, correo y cuentas bancarias ficticios (los datos bancarios reales de Didial solo están en el tenant real).
+- **Verificado en el navegador** (demo): el pie muestra el caso elegido, el cambio se guarda al recargar, los tres casos muestran su plazo y el presupuesto se ve completo con el logo grande.
+
 ## 2026-09-25 — Link de reseña en Google y logo completo en los documentos (solo datos)
 
 **Qué se entrega:** cierre de la parte de encuestas y ajuste del logo de los documentos. Sin migraciones ni cambios de código.
