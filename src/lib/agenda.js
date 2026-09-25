@@ -161,25 +161,142 @@ export function bloqueEnCorte(bloque, corte) {
   return minuto >= horaAMinutos(corte.inicio) && minuto < horaAMinutos(corte.fin)
 }
 
+// ---------------------------------------------------------------------------
+// Capacidad según las personas disponibles (espejo de agenda_cupos_bloque en
+// 0048_agenda_por_personal.sql: mismas reglas, para pintar la grilla sin ir a
+// la base por cada bloque).
+//
+// personal = { personas: [{ id, nombre, cargo, islas: [tipo_isla_id],
+//   horarios: [{ dia_semana, hora_inicio, hora_fin }], ausencias: [{ desde,
+//   hasta, hora_desde, hora_hasta }] }] }
+// Sin personal registrado (null o sin habilidades) se usa tipos_isla.capacidad.
+// ---------------------------------------------------------------------------
+const MAX_ISLAS_CON_PERSONAL = 12
+
+export function usaPersonal(personal) {
+  return Boolean(personal?.personas?.some((persona) => persona.islas.length > 0))
+}
+
+// ¿Trabaja la persona en el bloque de 30 minutos que parte en `minuto`? Horario
+// propio si tiene filas; si no, el de atención del taller. Una ausencia que
+// cubra el bloque la descarta.
+export function personaDisponible(persona, fechaISO, minuto, horariosTaller) {
+  const dia = diaSemanaDe(fechaISO)
+  const horario =
+    persona.horarios.length > 0
+      ? persona.horarios.find((h) => h.dia_semana === dia)
+      : horariosTaller.find((h) => h.dia_semana === dia)
+  if (!horario) return false
+  const desde = horaAMinutos(persona.horarios.length > 0 ? horario.hora_inicio : horario.hora_apertura)
+  const hasta = horaAMinutos(persona.horarios.length > 0 ? horario.hora_fin : horario.hora_cierre)
+  if (minuto < desde || minuto + PASO_BLOQUE_MINUTOS > hasta) return false
+  return !persona.ausencias.some(
+    (ausencia) =>
+      fechaISO >= ausencia.desde &&
+      fechaISO <= ausencia.hasta &&
+      (!ausencia.hora_desde ||
+        (horaAMinutos(ausencia.hora_desde) < minuto + PASO_BLOQUE_MINUTOS && minuto < horaAMinutos(ausencia.hora_hasta)))
+  )
+}
+
+// Holgura de cada isla: cuántas citas más de ese tipo caben. Cada cita necesita
+// una persona distinta que atienda su tipo (una persona hace una cosa a la vez),
+// lo que se cumple si para todo conjunto S de tipos las citas de S no superan a
+// las personas que atienden alguno de S (condición de Hall). Negativo = sobre-
+// agendado. `demanda`: Map isla_id -> citas en el bloque.
+export function holguraPorIsla(islaIds, personasDisponibles, demanda) {
+  const n = islaIds.length
+  const holgura = new Map(islaIds.map((id) => [id, Infinity]))
+  const mascaras = personasDisponibles.map((persona) =>
+    islaIds.reduce((mascara, id, indice) => (persona.islas.includes(id) ? mascara | (1 << indice) : mascara), 0)
+  )
+  for (let conjunto = 1; conjunto < 1 << n; conjunto++) {
+    let personas = 0
+    for (const mascara of mascaras) if (mascara & conjunto) personas++
+    let citas = 0
+    for (let i = 0; i < n; i++) if (conjunto & (1 << i)) citas += demanda.get(islaIds[i]) || 0
+    const libre = personas - citas
+    for (let i = 0; i < n; i++) {
+      if (conjunto & (1 << i) && libre < holgura.get(islaIds[i])) holgura.set(islaIds[i], libre)
+    }
+  }
+  return holgura
+}
+
+// Capacidad, ocupación y cupos libres de cada isla en un bloque de 30 minutos.
+// Devuelve un Map isla_id -> { capacidad, ocupadas, libres }. citasDia son las
+// citas de ese día (de cualquier isla).
+export function cuposEnBloque({ tiposIsla, citasDia, personal, horarios, fecha, minuto }) {
+  const bloque = minutosAHora(minuto)
+  const ocupadasPorIsla = new Map(
+    tiposIsla.map((isla) => [
+      isla.id,
+      citasEnBloque(
+        citasDia.filter((c) => c.tipo_isla_id === isla.id),
+        bloque
+      ).length,
+    ])
+  )
+  const resultado = new Map()
+
+  if (!usaPersonal(personal) || tiposIsla.length > MAX_ISLAS_CON_PERSONAL) {
+    for (const isla of tiposIsla) {
+      const ocupadas = ocupadasPorIsla.get(isla.id)
+      resultado.set(isla.id, { capacidad: isla.capacidad, ocupadas, libres: Math.max(0, isla.capacidad - ocupadas) })
+    }
+    return resultado
+  }
+
+  const disponibles = personal.personas.filter((persona) => personaDisponible(persona, fecha, minuto, horarios))
+  const holgura = holguraPorIsla(
+    tiposIsla.map((isla) => isla.id),
+    disponibles,
+    ocupadasPorIsla
+  )
+  for (const isla of tiposIsla) {
+    const ocupadas = ocupadasPorIsla.get(isla.id)
+    const libre = holgura.get(isla.id)
+    resultado.set(isla.id, { capacidad: Math.max(0, ocupadas + libre), ocupadas, libres: Math.max(0, libre) })
+  }
+  return resultado
+}
+
+// Quién atiende una isla ese día y si trabaja en algún momento del horario.
+export function personalDeIsla(personal, islaId, fechaISO, horarios) {
+  if (!usaPersonal(personal)) return []
+  const horario = horarios.find((h) => h.dia_semana === diaSemanaDe(fechaISO))
+  return personal.personas
+    .filter((persona) => persona.islas.includes(islaId))
+    .map((persona) => {
+      let trabaja = false
+      if (horario) {
+        const apertura = horaAMinutos(horario.hora_apertura)
+        const cierre = horaAMinutos(horario.hora_cierre)
+        for (let minuto = apertura; minuto + PASO_BLOQUE_MINUTOS <= cierre && !trabaja; minuto += PASO_BLOQUE_MINUTOS) {
+          trabaja = personaDisponible(persona, fechaISO, minuto, horarios)
+        }
+      }
+      return { id: persona.id, nombre: persona.nombre, trabaja }
+    })
+}
+
 // Cupos de un día: por cada bloque de atención, cuántos puestos hay y cuántos
 // están libres sumando todas las islas que operan en ese bloque (durante el
 // corte de mediodía solo cuentan las islas que siguen operando).
-export function ocupacionDelDia(fechaISO, citasDia, tiposIsla, horarios, corte) {
+export function ocupacionDelDia(fechaISO, citasDia, tiposIsla, horarios, corte, personal = null) {
   const horario = horarios.find((h) => h.dia_semana === diaSemanaDe(fechaISO))
   if (!horario) return { abierto: false, bloques: [], libres: 0, total: 0, pctOcupado: 0 }
 
   const bloques = generarBloques(horario.hora_apertura, horario.hora_cierre).map((bloque) => {
     const enCorte = bloqueEnCorte(bloque, corte)
+    const cupos = cuposEnBloque({ tiposIsla, citasDia, personal, horarios, fecha: fechaISO, minuto: horaAMinutos(bloque) })
     let libres = 0
     let total = 0
     for (const isla of tiposIsla) {
       if (enCorte && !isla.opera_en_corte) continue
-      const ocupantes = citasEnBloque(
-        citasDia.filter((c) => c.tipo_isla_id === isla.id),
-        bloque
-      ).length
-      total += isla.capacidad
-      libres += Math.max(0, isla.capacidad - ocupantes)
+      const { capacidad, libres: libresIsla } = cupos.get(isla.id)
+      total += capacidad
+      libres += libresIsla
     }
     return { bloque, libres, total }
   })
@@ -217,7 +334,7 @@ export function nombreVisible(cliente) {
 //     que ya pasó hoy.
 // Usa las mismas reglas que la grilla: horario de atención por día, corte de
 // mediodía (solo opera la isla que lo permite) y capacidad por bloque de 30 min.
-export function validarReagendamiento({ cita, fecha, hora, otrasCitasDelDia, isla, horarios, corte, hoy, ahoraMinutos }) {
+export function validarReagendamiento({ cita, fecha, hora, otrasCitasDelDia, isla, tiposIsla = null, personal = null, horarios, corte, hoy, ahoraMinutos }) {
   if (!fecha || !hora) return { ok: false, motivo: 'Elige el día y la hora.' }
   if (fecha < hoy) return { ok: false, motivo: 'No se puede agendar en un día que ya pasó.' }
 
@@ -249,11 +366,22 @@ export function validarReagendamiento({ cita, fecha, hora, otrasCitasDelDia, isl
     }
   }
 
-  const otrasEnLaIsla = otrasCitasDelDia.filter((c) => c.id !== cita.id && c.tipo_isla_id === cita.tipo_isla_id)
+  // Con personal registrado la capacidad depende de quién trabaja en cada bloque
+  // y de las citas de las demás islas (una persona hace una cosa a la vez): por
+  // eso se piden las citas del día de todas las islas, sin la propia.
+  const otras = otrasCitasDelDia.filter((c) => c.id !== cita.id)
+  const islas = tiposIsla || (isla ? [isla] : [])
   for (let minuto = inicio; minuto < fin; minuto += PASO_BLOQUE_MINUTOS) {
-    const ocupadas = citasEnBloque(otrasEnLaIsla, minutosAHora(minuto)).length
-    if (isla && ocupadas >= isla.capacidad) {
-      return { ok: false, motivo: `No hay cupo en ${isla.nombre} a las ${minutosAHora(minuto)} de ese día.` }
+    const cupos = cuposEnBloque({ tiposIsla: islas, citasDia: otras, personal, horarios, fecha, minuto }).get(cita.tipo_isla_id)
+    if (cupos && cupos.libres < 1) {
+      const nombre = isla?.nombre || 'esa isla'
+      return {
+        ok: false,
+        motivo:
+          usaPersonal(personal) && cupos.capacidad === 0
+            ? `No hay personal disponible en ${nombre} a las ${minutosAHora(minuto)} de ese día.`
+            : `No hay cupo en ${nombre} a las ${minutosAHora(minuto)} de ese día.`,
+      }
     }
   }
   return { ok: true, motivo: null }

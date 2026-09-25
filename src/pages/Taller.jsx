@@ -774,7 +774,7 @@ function Taller() {
                     {puestos.length - puestosOcupados} libre{puestos.length - puestosOcupados === 1 ? '' : 's'}
                   </p>
                   <h3 className="mb-1 mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Capacidad de la Agenda
+                    Puestos por tipo de isla
                   </h3>
                   <ul className="space-y-1 text-sm">
                     {tiposIsla.map((isla) => {
@@ -783,14 +783,14 @@ function Taller() {
                         <li key={isla.id} className="flex justify-between text-slate-700">
                           <span>{isla.nombre}</span>
                           <span className="text-slate-500">
-                            {dibujados} en el plano · capacidad {isla.capacidad}
+                            {dibujados} en el plano
                           </span>
                         </li>
                       )
                     })}
                   </ul>
                   <p className="mt-2 text-xs text-slate-400">
-                    Cada puesto con tipo de isla suma capacidad a la Agenda.
+                    La capacidad de la Agenda depende del equipo disponible (botón Equipo de la Agenda), no de los puestos: varios puestos quedan ocupados por vehículos que esperan un repuesto.
                   </p>
                 </div>
 
@@ -900,13 +900,13 @@ function PanelElemento({
           {esPuesto && (
             <>
               <label className="block">
-                <span className="label">Tipo de isla en la Agenda</span>
+                <span className="label">Tipo de isla</span>
                 <select
                   value={elemento.tipo_isla_id || ''}
                   onChange={(evento) => onGuardar({ tipo_isla_id: evento.target.value || null }, true)}
                   className="input"
                 >
-                  <option value="">Sin tipo (no suma capacidad)</option>
+                  <option value="">Sin tipo</option>
                   {tiposIsla.map((isla) => (
                     <option key={isla.id} value={isla.id}>
                       {isla.nombre}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
@@ -7,17 +7,23 @@ import { formatearPatente } from '../lib/patente'
 import {
   bloqueEnCorte,
   citasEnBloque,
+  cuposEnBloque,
   diaSemanaDe,
   etiquetaDeRango,
   etiquetaLarga,
   generarBloques,
+  horaAMinutos,
   hoyLocalISO,
   moverFecha,
   NIVEL_DE_VISTA,
   nombreVisible,
+  personalDeIsla,
   rangoDeVista,
+  usaPersonal,
   validarReagendamiento,
 } from '../lib/agenda'
+import { armarPersonal } from '../lib/personal'
+import PanelEquipo from '../components/agenda/PanelEquipo'
 import TarjetaCita, { ETIQUETA_ESTADO } from '../components/agenda/TarjetaCita'
 import VistaAnio from '../components/agenda/VistaAnio'
 import VistaMes from '../components/agenda/VistaMes'
@@ -40,6 +46,21 @@ function vistaInicial() {
     // Sin localStorage se parte en la vista de día.
   }
   return 'dia'
+}
+
+const ROLES_QUE_ADMINISTRAN_EQUIPO = ['admin', 'socia', 'jefe_taller']
+
+// Cuántos técnicos hay disponibles para una isla ese día. Quien agenda solo ve la
+// cantidad: a qué técnico va cada trabajo lo decide el jefe de taller en ClickUp.
+function TecnicosDeIsla({ personal, islaId, fecha, horarios }) {
+  const equipo = personalDeIsla(personal, islaId, fecha, horarios)
+  if (equipo.length === 0) return <>sin técnicos</>
+  const disponibles = equipo.filter((persona) => persona.trabaja).length
+  return (
+    <>
+      {disponibles} de {equipo.length} técnico{equipo.length === 1 ? '' : 's'} disponible{disponibles === 1 ? '' : 's'}
+    </>
+  )
 }
 
 const BOTON_NAVEGACION =
@@ -66,19 +87,39 @@ function Agenda() {
   const contenedorVista = useRef(null)
   const sincronizandoClickUp = useRef(false)
   const [recargas, setRecargas] = useState(0)
+  const [mostrarEquipo, setMostrarEquipo] = useState(false)
+  const [equipoBase, setEquipoBase] = useState({ personas: [], habilidades: [], horarios: [] })
+  const [ausencias, setAusencias] = useState([])
+  const [versionEquipo, setVersionEquipo] = useState(0)
+  const puedeAdministrarEquipo = ROLES_QUE_ADMINISTRAN_EQUIPO.includes(usuario?.rol)
+  const personal = useMemo(() => armarPersonal({ ...equipoBase, ausencias }), [equipoBase, ausencias])
 
   useEffect(() => {
     async function cargarBase() {
       try {
-        const [{ data: islas, error: errorIslas }, { data: horarios, error: errorHorarios }, { data: empresa, error: errorEmpresa }] =
+        const [
+          { data: islas, error: errorIslas },
+          { data: horarios, error: errorHorarios },
+          { data: empresa, error: errorEmpresa },
+          respPersonas,
+          respHabilidades,
+          respHorariosPersonal,
+        ] =
           await Promise.all([
             supabase.from('tipos_isla').select('id, nombre, capacidad, orden, opera_en_corte').eq('activo', true).order('orden'),
             supabase.from('horario_atencion').select('dia_semana, hora_apertura, hora_cierre').eq('empresa_id', usuario.empresa_id),
             supabase.from('empresas').select('corte_mediodia_inicio, corte_mediodia_fin').eq('id', usuario.empresa_id).maybeSingle(),
+            supabase.from('personal_taller').select('id, nombre, cargo, activo, orden').eq('activo', true).order('orden'),
+            supabase.from('personal_habilidades').select('personal_id, tipo_isla_id'),
+            supabase.from('personal_horarios').select('personal_id, dia_semana, hora_inicio, hora_fin'),
           ])
         if (errorIslas) throw errorIslas
         if (errorHorarios) throw errorHorarios
         if (errorEmpresa) throw errorEmpresa
+        // El equipo es opcional: si no carga, la Agenda usa la capacidad fija de cada isla.
+        if (!respPersonas.error && !respHabilidades.error && !respHorariosPersonal.error) {
+          setEquipoBase({ personas: respPersonas.data || [], habilidades: respHabilidades.data || [], horarios: respHorariosPersonal.data || [] })
+        }
         setTiposIsla(islas || [])
         setHorariosAtencion(horarios || [])
         setCorteMediodia(
@@ -89,7 +130,25 @@ function Agenda() {
       }
     }
     if (usuario?.empresa_id) cargarBase()
-  }, [usuario])
+  }, [usuario, versionEquipo])
+
+  // Las ausencias que tocan el rango visible (vacaciones, licencias, permisos).
+  useEffect(() => {
+    async function cargarAusencias() {
+      try {
+        const { desde, hasta } = rangoDeVista(vista, fecha)
+        const { data, error: errorAusencias } = await supabase
+          .from('personal_ausencias')
+          .select('personal_id, desde, hasta, hora_desde, hora_hasta')
+          .lte('desde', hasta)
+          .gte('hasta', desde)
+        if (!errorAusencias) setAusencias(data || [])
+      } catch {
+        // Sin las ausencias se muestra la disponibilidad normal del equipo.
+      }
+    }
+    if (usuario?.empresa_id) cargarAusencias()
+  }, [usuario, vista, fecha, versionEquipo])
 
   // Cada cita agendada (a mano o por el bot) crea su tarjeta en ClickUp, en el
   // estado "agenda". La base marca las citas pendientes (clickup_pendiente) y la
@@ -243,8 +302,20 @@ function Agenda() {
         .from('citas')
         .select('id, tipo_isla_id, hora, duracion_estimada_minutos, estado')
         .eq('fecha', nuevaFecha)
-        .eq('tipo_isla_id', cita.tipo_isla_id)
       if (errorDia) throw errorDia
+
+      // Con personal registrado hay que ver quién está ausente ese día, que puede
+      // quedar fuera del rango que se está mirando.
+      let personalDestino = personal
+      if (usaPersonal(personal)) {
+        const { data: ausenciasDestino, error: errorAusencias } = await supabase
+          .from('personal_ausencias')
+          .select('personal_id, desde, hasta, hora_desde, hora_hasta')
+          .lte('desde', nuevaFecha)
+          .gte('hasta', nuevaFecha)
+        if (errorAusencias) throw errorAusencias
+        personalDestino = armarPersonal({ ...equipoBase, ausencias: ausenciasDestino || [] })
+      }
 
       const ahora = new Date()
       const validacion = validarReagendamiento({
@@ -253,6 +324,8 @@ function Agenda() {
         hora: nuevaHora,
         otrasCitasDelDia: delDia || [],
         isla: tiposIsla.find((isla) => isla.id === cita.tipo_isla_id),
+        tiposIsla,
+        personal: personalDestino,
         horarios: horariosAtencion,
         corte: corteMediodia,
         hoy: hoyLocalISO(),
@@ -295,6 +368,7 @@ function Agenda() {
   )
   const citasDia = citas.filter((cita) => cita.fecha === fecha)
   const horarioDelDia = horariosAtencion.find((h) => h.dia_semana === diaSemanaDe(fecha))
+  const conPersonal = usaPersonal(personal)
   const bloques = horarioDelDia ? generarBloques(horarioDelDia.hora_apertura, horarioDelDia.hora_cierre) : []
 
   return (
@@ -315,6 +389,15 @@ function Agenda() {
               </button>
             ))}
           </div>
+          {puedeAdministrarEquipo && (
+            <button
+              type="button"
+              onClick={() => setMostrarEquipo(true)}
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Equipo
+            </button>
+          )}
           <button
             type="button"
             onClick={() => abrirFormulario(null)}
@@ -385,6 +468,7 @@ function Agenda() {
           tiposIsla={tiposIsla}
           horarios={horariosAtencion}
           corteMediodia={corteMediodia}
+          personal={personal}
           onElegirDia={elegirDia}
           onElegirMes={elegirMes}
         />
@@ -397,6 +481,7 @@ function Agenda() {
           tiposIsla={tiposIsla}
           horarios={horariosAtencion}
           corteMediodia={corteMediodia}
+          personal={personal}
           expandidas={expandidas}
           onAlternar={alternarExpandida}
           onCambiarEstado={actualizarEstado}
@@ -412,6 +497,7 @@ function Agenda() {
           tiposIsla={tiposIsla}
           horarios={horariosAtencion}
           corteMediodia={corteMediodia}
+          personal={personal}
           onElegirDia={elegirDia}
         />
       )}
@@ -431,7 +517,13 @@ function Agenda() {
                     {tiposIsla.map((isla) => (
                       <th key={isla.id} className="border-l border-slate-100 bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">
                         {isla.nombre}
-                        <span className="block font-normal text-slate-400">capacidad {isla.capacidad}</span>
+                        <span className="block font-normal text-slate-400">
+                          {conPersonal ? (
+                            <TecnicosDeIsla personal={personal} islaId={isla.id} fecha={fecha} horarios={horariosAtencion} />
+                          ) : (
+                            `capacidad ${isla.capacidad}`
+                          )}
+                        </span>
                       </th>
                     ))}
                   </tr>
@@ -439,14 +531,17 @@ function Agenda() {
                 <tbody>
                   {bloques.map((bloque) => {
                     const enCorteGeneral = bloqueEnCorte(bloque, corteMediodia)
+                    const cupos = cuposEnBloque({ tiposIsla, citasDia, personal, horarios: horariosAtencion, fecha, minuto: horaAMinutos(bloque) })
                     return (
                       <tr key={bloque} className={enCorteGeneral ? 'bg-slate-50/60' : ''}>
                         <td className="sticky left-0 z-10 bg-white px-2 py-1 text-slate-500">{bloque}</td>
                         {tiposIsla.map((isla) => {
                           const cerradoAqui = enCorteGeneral && !isla.opera_en_corte
                           const citasIsla = citasDia.filter((c) => c.tipo_isla_id === isla.id)
+                          const cupo = cupos.get(isla.id)
                           const ocupantes = cerradoAqui ? [] : citasEnBloque(citasIsla, bloque)
-                          const libres = isla.capacidad - ocupantes.length
+                          const libres = cerradoAqui ? 0 : cupo.libres
+                          const sinPersonal = conPersonal && cupo.capacidad === 0
                           const citasQueEmpiezanAqui = citasIsla.filter((c) => c.hora && c.hora.slice(0, 5) === bloque)
                           return (
                             <td
@@ -460,7 +555,7 @@ function Agenda() {
                               ) : (
                                 <>
                                   <span className={`text-[10px] ${libres <= 0 ? 'font-medium text-red-600' : 'text-slate-400'}`}>
-                                    {ocupantes.length}/{isla.capacidad} · {libres > 0 ? `${libres} libre${libres === 1 ? '' : 's'}` : 'completo'}
+                                    {ocupantes.length}/{cupo.capacidad} · {libres > 0 ? `${libres} libre${libres === 1 ? '' : 's'}` : sinPersonal ? 'sin personal' : 'completo'}
                                   </span>
                                   <div className="mt-0.5 space-y-1">
                                     {citasQueEmpiezanAqui.map(tarjeta)}
@@ -572,8 +667,21 @@ function Agenda() {
       )}
       </div>
 
+      {mostrarEquipo && puedeAdministrarEquipo && (
+        <PanelEquipo
+          empresaId={usuario.empresa_id}
+          usuarioId={usuario.id}
+          puedeEditar={puedeAdministrarEquipo}
+          tiposIsla={tiposIsla}
+          horariosTaller={horariosAtencion}
+          onCambio={() => setVersionEquipo((n) => n + 1)}
+          onCerrar={() => setMostrarEquipo(false)}
+        />
+      )}
+
       {mostrarFormulario && (
         <FormularioNuevaCita
+          conPersonal={conPersonal}
           empresaId={usuario.empresa_id}
           usuarioId={usuario.id}
           tiposIsla={tiposIsla}
@@ -591,7 +699,7 @@ function Agenda() {
   )
 }
 
-function FormularioNuevaCita({ empresaId, usuarioId, tiposIsla, fechaInicial, prellenado, onCancelar, onCreada }) {
+function FormularioNuevaCita({ conPersonal, empresaId, usuarioId, tiposIsla, fechaInicial, prellenado, onCancelar, onCreada }) {
   const [fecha, setFecha] = useState(fechaInicial)
   const [tipoIslaId, setTipoIslaId] = useState(prellenado?.tipoIslaId || tiposIsla[0]?.id || '')
   const [hora, setHora] = useState(prellenado?.hora || '')
@@ -924,7 +1032,7 @@ function FormularioNuevaCita({ empresaId, usuarioId, tiposIsla, fechaInicial, pr
           >
             {tiposIsla.map((isla) => (
               <option key={isla.id} value={isla.id}>
-                {isla.nombre} (capacidad {isla.capacidad})
+                {conPersonal ? isla.nombre : `${isla.nombre} (capacidad ${isla.capacidad})`}
               </option>
             ))}
           </select>

@@ -20,13 +20,13 @@ function claseBarra(pct) {
 // Semana completa: una columna por día con sus citas (patente, modelo y nombre,
 // desplegables) y, abajo, un mapa de disponibilidad por bloque de 30 minutos
 // para ver de un vistazo cuándo conviene atender a un cliente.
-function VistaSemana({ fecha, citas, tiposIsla, horarios, corteMediodia, expandidas, onAlternar, onCambiarEstado, onReagendar, onElegirDia }) {
+function VistaSemana({ fecha, citas, tiposIsla, horarios, corteMediodia, personal, expandidas, onAlternar, onCambiarEstado, onReagendar, onElegirDia }) {
   const { desde, hasta } = rangoDeVista('semana', fecha)
   const hoy = hoyLocalISO()
 
   const todosLosDias = diasEntre(desde, hasta).map((dia) => {
     const citasDia = citas.filter((c) => c.fecha === dia)
-    const ocupacion = ocupacionDelDia(dia, citasDia, tiposIsla, horarios, corteMediodia)
+    const ocupacion = ocupacionDelDia(dia, citasDia, tiposIsla, horarios, corteMediodia, personal)
     return { dia, citasDia, ocupacion }
   })
   // Un día en que el taller no atiende (el domingo) solo aparece si tiene citas.

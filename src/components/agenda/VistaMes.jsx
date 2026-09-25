@@ -23,7 +23,7 @@ function detalleCita(cita) {
 
 // Mes completo: cada día muestra cuántas citas tiene, qué tan ocupado está y
 // las primeras citas (hora, patente y nombre). Pinchar un día abre su detalle.
-function VistaMes({ fecha, citas, tiposIsla, horarios, corteMediodia, onElegirDia }) {
+function VistaMes({ fecha, citas, tiposIsla, horarios, corteMediodia, personal, onElegirDia }) {
   const { desde, hasta } = rangoDeVista('mes', fecha)
   const mesActual = fecha.slice(0, 7)
   const hoy = hoyLocalISO()
@@ -31,7 +31,7 @@ function VistaMes({ fecha, citas, tiposIsla, horarios, corteMediodia, onElegirDi
   const celdas = diasEntre(desde, hasta).map((dia) => {
     const citasDia = citas.filter((c) => c.fecha === dia)
     const vigentes = citasDia.filter((c) => c.estado === 'agendada' || c.estado === 'confirmada')
-    const ocupacion = ocupacionDelDia(dia, citasDia, tiposIsla, horarios, corteMediodia)
+    const ocupacion = ocupacionDelDia(dia, citasDia, tiposIsla, horarios, corteMediodia, personal)
     return { fecha: dia, numero: Number(dia.slice(8)), delMes: dia.startsWith(mesActual), esHoy: dia === hoy, citasDia, vigentes, ocupacion }
   })
 

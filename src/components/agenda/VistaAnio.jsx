@@ -13,7 +13,7 @@ function claseDia(celda) {
 
 // Año completo: doce meses pequeños, cada día coloreado según qué tan ocupado
 // está. Sirve para ver de un vistazo las semanas cargadas y las tranquilas.
-function VistaAnio({ fecha, citas, tiposIsla, horarios, corteMediodia, onElegirDia, onElegirMes }) {
+function VistaAnio({ fecha, citas, tiposIsla, horarios, corteMediodia, personal, onElegirDia, onElegirMes }) {
   const anio = fecha.slice(0, 4)
   const hoy = hoyLocalISO()
 
@@ -37,7 +37,7 @@ function VistaAnio({ fecha, citas, tiposIsla, horarios, corteMediodia, onElegirD
         delMes: dia.startsWith(primero.slice(0, 7)),
         esHoy: dia === hoy,
         vigentes,
-        ocupacion: ocupacionDelDia(dia, citasDia, tiposIsla, horarios, corteMediodia),
+        ocupacion: ocupacionDelDia(dia, citasDia, tiposIsla, horarios, corteMediodia, personal),
       }
     })
     const totalCitas = celdas.filter((c) => c.delMes).reduce((suma, c) => suma + c.vigentes, 0)

@@ -1,5 +1,17 @@
 # Registro de cambios
 
+## 2026-09-25 — Agenda según la disponibilidad del personal (`0048_agenda_por_personal.sql`)
+
+**Qué se entrega:** la capacidad de la Agenda deja de ser un número fijo por isla y pasa a depender de quién está disponible en cada bloque de 30 minutos.
+
+- **Equipo del taller** (tablas `personal_taller`, `personal_habilidades`, `personal_horarios`, `personal_ausencias`, con RLS por empresa; escriben admin, socia y jefe de taller). Cada persona tiene los tipos de isla que atiende, un horario semanal propio (sin horario propio usa el de atención del taller) y ausencias por rango de fechas, de día completo o solo unas horas (vacaciones, licencias, permisos).
+- **Una persona atiende una cosa a la vez:** Gabriel (servicio rápido + lavado) y Pablo (alineación + lavado) comparten cupos. Los cupos se calculan asignando citas a personas distintas (condición de Hall sobre los tipos de isla): `agenda_cupos_bloque` y `personal_disponible_en` en la base, y su espejo puro en `lib/agenda.js` (`cuposEnBloque`, `holguraPorIsla`, `personaDisponible`, `personalDeIsla`).
+- **`citas_cupos_disponibles` conserva su firma:** el aviso del formulario, `citas_buscar_horarios` y el bot de WhatsApp usan la disponibilidad real sin más cambios. Una empresa sin personal registrado sigue con `tipos_isla.capacidad`.
+- **Plano:** los puestos ya no fijan la capacidad de la Agenda (varios quedan ocupados por vehículos que esperan un repuesto). Se elimina el trigger `trg_plano_elementos_capacidad_isla` y se corrigen los textos de Taller.
+- **Agenda (frontend):** botón **Equipo**, visible solo para admin, socia y jefe de taller (`components/agenda/PanelEquipo.jsx`) para habilidades, horario, ausencias y altas/bajas; la grilla del día muestra cuántos técnicos hay disponibles por isla ("2 de 3 técnicos disponibles"), "n/capacidad" por bloque y "sin personal"; quien agenda solo ve cantidades, porque a qué técnico va cada trabajo lo decide el jefe de taller en ClickUp (la Agenda no asigna técnico); las vistas de semana, mes y año y el reagendamiento usan la misma disponibilidad (el reagendamiento considera las citas de todas las islas y las ausencias del día de destino).
+- **Carga inicial** (real y demo): Felipe Codoceo, Ignacio Heredia y Shelmy Belyzer (taller mecánico); Gabriel Cayo (servicio rápido y lavado); Wilson Araya (pintura); Pablo Donoso (alineación y lavado). Resultado un lunes sin citas: mecánica 3, servicio rápido 1 (antes 2), alineación 1, pintura 1, lavado 2.
+- **Verificado:** el motor con casos (lavado compartido, ausencia, horario propio, sin personal) y en el navegador con la demo (ausencia de Ignacio: mecánica baja de 3 a 2, la grilla pasa a "2 de 3 técnicos disponibles", el formulario avisa "sin cupos" y se puede quitar la ausencia).
+
 ## 2026-09-25 — Documentos de la demo iguales a los de Didial (`0047_demo_documentos_como_didial.sql`)
 
 **Qué se entrega:** los documentos del tenant demo (Orden de Ingreso, Presupuesto y Orden de Egreso) se ven igual que los de Servicio Automotriz Didial. Sin cambios de código.
