@@ -1,5 +1,12 @@
 # Registro de cambios
 
+## 2026-09-25 — Link de reseña en Google y logo completo en los documentos (solo datos)
+
+**Qué se entrega:** cierre de la parte de encuestas y ajuste del logo de los documentos. Sin migraciones ni cambios de código.
+
+- **Reseña en Google:** `empresas.google_review_url` (columna de `0025`) quedó cargada con el link de la ficha de Didial, en el tenant real y en la demo (para mostrar el proceso). En la encuesta pública, una respuesta "Excelente" muestra el botón "Dejar una reseña en Google".
+- **Logo de los documentos:** la Orden de Ingreso, el Presupuesto y la Orden de Egreso toman el logo de `empresas.logo_url` (`EncabezadoDocumento`). Debe ser el logo completo (`/logo-completo-didial.png`), no el ícono del favicon, que queda solo para el panel y la pestaña.
+
 ## 2026-09-25 — Plano del taller con el layout real de Didial (`0045_plano_layout_didial.sql`)
 
 **Qué se entrega:** el panel Taller muestra el layout real del taller (33 m x 65 m, 2.145 m2) a partir de la imagen del cliente, con su leyenda: 15 puestos productivos (rojo), 15 puestos de pulmón (verde) y 2 de recepción/ingreso (naranjo).
