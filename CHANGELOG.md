@@ -1,5 +1,14 @@
 # Registro de cambios
 
+## 2026-09-25 — Documentos de la demo iguales a los de Didial (`0047_demo_documentos_como_didial.sql`)
+
+**Qué se entrega:** los documentos del tenant demo (Orden de Ingreso, Presupuesto y Orden de Egreso) se ven igual que los de Servicio Automotriz Didial. Sin cambios de código.
+
+- Nombre, dirección, teléfono y correo de la empresa demo se copian desde la fila real (mismo encabezado y mismas cláusulas de las órdenes).
+- Los tres textos de `politicas_presupuesto` de la demo pasan a ser los de Didial, con los datos de transferencia reales (reemplazan los ficticios de `0046`).
+- No se copian los datos tributarios (rut, giro, código de actividad, comuna, ciudad).
+- Efecto: el nombre que muestran el panel y la barra superior en la cuenta demo pasa a ser el de Didial. Verificado con la huella de los textos (idéntica en ambas empresas) y en el navegador.
+
 ## 2026-09-25 — Políticas al pie de los presupuestos (`0046_politicas_presupuesto.sql`)
 
 **Qué se entrega:** el presupuesto impreso lleva las políticas del taller según el caso de repuestos, en vez de la línea fija "vigencia de 30 días".
