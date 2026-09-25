@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2026-09-25 — Los datos de prueba viven solo en la demo
+
+**Qué se hizo:** se eliminaron del tenant real de Didial los registros de prueba de sesiones anteriores, para que los datos de prueba existan únicamente en el tenant de demostración (aislado por `empresa_id`/RLS; comprobado que una cuenta real no ve los datos de la demo).
+
+- **Diagnóstico de solo lectura primero**, revisado con la persona antes de borrar: 6 clientes ("Prueba…"), 5 vehículos (`PRUE03`, `PRUE10`, `PRUE16`, `PRUE89`, `PRUE93`) y 5 OT (14002, 14012, 14019, 14026, 14030), todas sin entregar, más 4 líneas de detalle, 1 tarea y 2 inspecciones RADAR.
+- **Script de limpieza** entregado a la persona (no ejecutado por Claude), en una transacción, con salvaguardas: filtra por la empresa Didial real (`not es_demo`), aborta sin tocar nada si las cantidades no son exactamente 6/5/5 o si alguna OT estuviera entregada o bloqueada, y si algún movimiento de bodega apuntaba a esas líneas conserva el movimiento y solo suelta el vínculo (no altera el stock).
+- **Resultado verificado:** clientes de prueba 0, vehículos `PRUE` 0, OT de prueba 0; el tenant real queda con 1 cliente y 0 OT.
+- **Fuera del alcance del script:** las tarjetas de ClickUp que esas OT hubieran creado y los archivos de fotos del RADAR en el almacenamiento (no se borran solos).
+- **Regla para adelante:** las pruebas se hacen en la cuenta de demo, no en el tenant real.
+
 ## 2026-09-25 — El logo del panel es siempre el del favicon
 
 **Qué se corrige:** el menú lateral tomaba el logo de `empresas.logo_url`, que en el tenant real trae el logo con el nombre en vez del ícono. Ahora el panel carga siempre `/logo-didial.png`, el mismo archivo que usa el favicon (`index.html`), sin fondo blanco y sin depender de ese campo. Verificado en el navegador: la ruta de la imagen del panel es idéntica a la del favicon (1254 px, carga correcta). Los documentos impresos siguen usando `empresas.logo_url` en su encabezado; no se tocaron.
