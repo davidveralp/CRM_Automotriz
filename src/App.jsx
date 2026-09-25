@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import Menu from './components/Menu'
+import ModalCorreosDemo from './components/ModalCorreosDemo'
 import RutaProtegida from './components/RutaProtegida'
 import Login from './pages/Login'
 import CambiarClave from './pages/CambiarClave'
@@ -35,6 +36,7 @@ function Layout({ children }) {
       <main className="min-w-0 flex-1">
         <ErrorBoundary>{children}</ErrorBoundary>
       </main>
+      <ModalCorreosDemo />
     </div>
   )
 }

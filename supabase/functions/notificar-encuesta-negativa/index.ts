@@ -13,9 +13,14 @@
 // `clasificacion = 'negativo'` y `notificado_en` sigue vacío (esa
 // actualización atómica también evita un doble envío si la página
 // reintenta la llamada).
+//
+// En una empresa demo (empresas.es_demo) el aviso no va a los usuarios
+// admin/socia de los datos de ejemplo sino al correo de asesor de prueba
+// que la persona ingresó al entrar a la demo.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { respuestaJson, respuestaPreflight } from '../_shared/cors.ts'
 import { enviarCorreo } from '../_shared/brevo.ts'
+import { formatearPatente } from '../_shared/patente.ts'
 
 const ETIQUETA_AREA: Record<string, string> = {
   entrega_tiempo: 'Entrega a tiempo',
@@ -101,19 +106,36 @@ Deno.serve(async (req) => {
     return respuestaJson({ data: { enviado: false, motivo: 'ot_no_encontrada' } })
   }
 
-  const { data: destinatarios } = await supabase
-    .from('usuarios')
-    .select('correo, nombre_completo')
-    .eq('empresa_id', trabajo.empresa_id)
-    .eq('activo', true)
-    .in('rol', ['admin', 'socia'])
+  const { data: empresa } = await supabase
+    .from('empresas')
+    .select('es_demo, demo_correo_asesor')
+    .eq('id', trabajo.empresa_id)
+    .maybeSingle()
+  const esDemo = Boolean(empresa?.es_demo)
+
+  let destinatarios: { correo: string; nombre_completo: string }[] | null
+  if (esDemo) {
+    destinatarios = empresa?.demo_correo_asesor
+      ? [{ correo: empresa.demo_correo_asesor, nombre_completo: 'Asesor (prueba de la demo)' }]
+      : []
+  } else {
+    const { data } = await supabase
+      .from('usuarios')
+      .select('correo, nombre_completo')
+      .eq('empresa_id', trabajo.empresa_id)
+      .eq('activo', true)
+      .in('rol', ['admin', 'socia'])
+    destinatarios = data
+  }
 
   if (!destinatarios || destinatarios.length === 0) {
     await supabase.from('integraciones_brevo_errores').insert({
       empresa_id: trabajo.empresa_id,
       encuesta_id: encuesta.id,
       operacion: 'notificar_encuesta_negativa',
-      mensaje: 'No hay usuarios admin/socia activos a quién avisar.',
+      mensaje: esDemo
+        ? 'Demo sin correo de prueba del asesor: ingrésalo en "Correos de prueba".'
+        : 'No hay usuarios admin/socia activos a quién avisar.',
     })
     return respuestaJson({ data: { enviado: false, motivo: 'sin_destinatarios' } })
   }
@@ -143,7 +165,7 @@ Deno.serve(async (req) => {
 
   const html = `
     <p>Encuesta de postventa con calificación baja — OT ${trabajo.numero_ot}.</p>
-    <p><strong>Cliente:</strong> ${nombreCliente || '(sin nombre)'} · <strong>Vehículo:</strong> ${vehiculo?.marca ?? ''} ${vehiculo?.modelo ?? ''} (${vehiculo?.patente ?? ''})</p>
+    <p><strong>Cliente:</strong> ${nombreCliente || '(sin nombre)'} · <strong>Vehículo:</strong> ${vehiculo?.marca ?? ''} ${vehiculo?.modelo ?? ''} (${formatearPatente(vehiculo?.patente)})</p>
     <p><strong>Área(s) a revisar:</strong> ${areasTexto || '—'}</p>
     <ul>${filasCalificaciones}</ul>
     ${encuesta.sugerencia ? `<p><strong>Sugerencia del cliente:</strong> ${encuesta.sugerencia}</p>` : ''}
@@ -157,7 +179,7 @@ Deno.serve(async (req) => {
       await enviarCorreo({
         destinatarioEmail: destinatario.correo,
         destinatarioNombre: destinatario.nombre_completo,
-        asunto: `⚠ Encuesta negativa — OT ${trabajo.numero_ot} (${areasTexto || 'revisar'})`,
+        asunto: `${esDemo ? '[Demo] ' : ''}⚠ Encuesta negativa — OT ${trabajo.numero_ot} (${areasTexto || 'revisar'})`,
         html,
       })
       enviados++

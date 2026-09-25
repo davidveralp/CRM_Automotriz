@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
+import { EVENTO_ABRIR_CORREOS_DEMO } from './ModalCorreosDemo'
 
 const ETIQUETAS_ROL = {
   socia: 'Socia',
@@ -204,6 +205,15 @@ function Menu() {
               <p className="text-xs text-sky/55">{ETIQUETAS_ROL[usuario.rol] ?? usuario.rol}</p>
             </div>
           </div>
+          {usuario.empresas?.es_demo && (
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event(EVENTO_ABRIR_CORREOS_DEMO))}
+              className="w-full rounded-lg px-3 py-2 text-left text-sm text-didial-amber transition-colors hover:bg-white/5"
+            >
+              Correos de prueba
+            </button>
+          )}
           <button type="button" onClick={cerrarSesion} className="w-full rounded-lg px-3 py-2 text-left text-sm text-sky/75 transition-colors hover:bg-white/5 hover:text-white">
             Cerrar sesión
           </button>

@@ -1,5 +1,16 @@
 # Registro de cambios
 
+## 2026-09-25 — Correos de prueba en la demo (`0040_demo_correos_de_prueba.sql`)
+
+**Qué se entrega:** al probar la demo se pide el correo del cliente y el del asesor (pueden ser el mismo) para recibir de verdad los correos del sistema, sin que la demo le escriba jamás a un cliente real ni a las direcciones ficticias de los datos de ejemplo.
+
+- **Modal al entrar a la demo** (`ModalCorreosDemo.jsx`, solo si `empresas.es_demo`): correo del cliente, casilla "usar el mismo correo para el asesor" y, si se desmarca, correo del asesor. Se pregunta una vez por sesión del navegador (`sessionStorage`), con opción "Ahora no", y queda el botón "Correos de prueba" en el menú lateral para cambiarlos. No se precargan desde la base: el tenant demo es compartido y se filtraría el correo de quien probó antes.
+- **Dónde se guardan:** `empresas.es_demo`, `demo_correo_cliente` y `demo_correo_asesor`, escritos por la función `demo_guardar_correos()` (valida el formato y falla fuera de un tenant demo). No se toca `usuarios.correo` (es `unique` y cruza con ClickUp: un correo real repetido lo rompería) ni `clientes.email`.
+- **Funciones de correo** (desplegadas: `enviar-encuestas-pendientes` v7, `notificar-encuesta-negativa` v3, `verify_jwt` sin cambios): en una empresa demo, la encuesta de postventa va al correo del cliente de prueba y el aviso de encuesta negativa al del asesor de prueba; los asuntos llevan `[Demo]` y la patente sale como `XX XX XX` (`_shared/patente.ts`). Si falta el correo de prueba, la función lo registra en `integraciones_brevo_errores` con un mensaje claro y no envía nada.
+- **Riesgo cerrado en la función real:** `enviar-encuestas-pendientes` recorría las encuestas pendientes de TODAS las empresas con el service role, así que apretar el botón desde la demo podía escribirle a clientes reales de otro taller. Ahora, con la sesión de una persona, solo procesa las de su propia empresa (`trabajos_taller!inner` + filtro por `empresa_id`); solo el service role -el futuro job automático- recorre todas; sin sesión ni service role responde 401 (verificado con la clave pública: HTTP 401).
+- **Orden de despliegue:** la migración va antes que las funciones y que el frontend, porque el login (`AuthContext`) y las funciones leen las columnas nuevas.
+- **No probado de extremo a extremo:** el envío real por Brevo no se ejecutó desde acá para no escribir a direcciones ajenas; se verificó el modal, la función RPC, el despliegue y el rechazo sin sesión. El aviso "listo para entrega" al asesor lo dispara ClickUp y no es probable en la demo.
+
 ## 2026-09-25 — Formato de patente XX XX XX y demo sin marca ajena (rama limpia)
 
 **Qué se entrega:** dos ajustes pedidos antes de publicar la rama de la demo.

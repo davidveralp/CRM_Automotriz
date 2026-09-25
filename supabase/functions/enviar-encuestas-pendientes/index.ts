@@ -7,10 +7,17 @@
 // automatizarlo con pg_cron + Supabase Vault es un paso aparte, documentado
 // en el CHANGELOG en vez de ir en una migración con el secreto adentro-.
 //
-// Usa el service role a propósito: es un job de sistema que recorre todas
-// las empresas, no la acción de un usuario dentro de su propio tenant.
+// Usa el service role a propósito para poder leer todas las empresas, pero
+// NO recorre todas por cualquiera que llame: con la sesión de una persona
+// solo procesa las encuestas de SU empresa (si no, un botón apretado desde
+// el tenant de demostración le escribiría a clientes reales de otro taller).
+// Solo el service role -el job automático futuro- recorre todas las empresas.
+//
+// En una empresa demo (empresas.es_demo) el correo no va al cliente de los
+// datos de ejemplo sino al correo de prueba que la persona ingresó.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { respuestaJson, respuestaPreflight } from '../_shared/cors.ts'
+import { formatearPatente } from '../_shared/patente.ts'
 import { enviarCorreo } from '../_shared/brevo.ts'
 
 interface EncuestaPendiente {
@@ -22,7 +29,7 @@ interface EncuestaPendiente {
     empresa_id: string
     clientes: { nombre: string; apellido: string | null; razon_social: string | null; email: string | null } | null
     vehiculos: { patente: string; marca: string; modelo: string } | null
-    empresas: { nombre: string } | null
+    empresas: { nombre: string; es_demo: boolean; demo_correo_cliente: string | null } | null
   } | null
 }
 
@@ -34,13 +41,31 @@ Deno.serve(async (req) => {
 
   const hoy = new Date().toISOString().slice(0, 10)
 
-  const { data: pendientes, error: errorConsulta } = await supabase
+  // Quién llama: el service role (job de sistema) o una persona con sesión.
+  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '')
+  let empresaDelUsuario: string | null = null
+  if (!token || token !== Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+    const { data: sesion } = await supabase.auth.getUser(token)
+    const { data: perfil } = sesion?.user
+      ? await supabase.from('usuarios').select('empresa_id').eq('id', sesion.user.id).eq('activo', true).maybeSingle()
+      : { data: null }
+    if (!perfil) {
+      return respuestaJson({ error: { mensaje: 'No autorizado: inicia sesión para enviar encuestas.' } }, 401)
+    }
+    empresaDelUsuario = perfil.empresa_id
+  }
+
+  let consulta = supabase
     .from('encuestas')
     .select(
-      'id, token, trabajos_taller(id, numero_ot, empresa_id, clientes(nombre, apellido, razon_social, email), vehiculos(patente, marca, modelo), empresas(nombre))'
+      'id, token, trabajos_taller!inner(id, numero_ot, empresa_id, clientes(nombre, apellido, razon_social, email), vehiculos(patente, marca, modelo), empresas(nombre, es_demo, demo_correo_cliente))'
     )
     .is('enviado_en', null)
     .lte('programado_para', hoy)
+  if (empresaDelUsuario) {
+    consulta = consulta.eq('trabajos_taller.empresa_id', empresaDelUsuario)
+  }
+  const { data: pendientes, error: errorConsulta } = await consulta
 
   if (errorConsulta) {
     return respuestaJson({ error: { mensaje: errorConsulta.message } }, 500)
@@ -55,13 +80,18 @@ Deno.serve(async (req) => {
     const vehiculo = trabajo?.vehiculos
     const empresa = trabajo?.empresas
 
-    if (!trabajo || !cliente?.email || !vehiculo || !empresa) {
-      errores.push({ encuesta_id: encuestaCruda.id, mensaje: 'Cliente sin correo registrado; no se puede enviar.' })
+    // En demo el destino es el correo de prueba, nunca el del cliente de ejemplo.
+    const correoDestino = empresa?.es_demo ? empresa.demo_correo_cliente : cliente?.email
+    if (!trabajo || !cliente || !correoDestino || !vehiculo || !empresa) {
+      const motivo = empresa?.es_demo
+        ? 'Demo sin correo de prueba del cliente: ingrésalo en "Correos de prueba".'
+        : 'Cliente sin correo registrado.'
+      errores.push({ encuesta_id: encuestaCruda.id, mensaje: motivo })
       await supabase.from('integraciones_brevo_errores').insert({
         empresa_id: trabajo?.empresa_id ?? null,
         encuesta_id: encuestaCruda.id,
         operacion: 'enviar_encuesta',
-        mensaje: 'Cliente sin correo registrado.',
+        mensaje: motivo,
       })
       continue
     }
@@ -72,7 +102,7 @@ Deno.serve(async (req) => {
     const html = `
       <p>Hola ${nombreCliente},</p>
       <p>Gracias por confiar en ${empresa.nombre} para la mantención de tu ${vehiculo.marca} ${vehiculo.modelo}
-      (patente ${vehiculo.patente}, OT ${trabajo.numero_ot}).</p>
+      (patente ${formatearPatente(vehiculo.patente)}, OT ${trabajo.numero_ot}).</p>
       <p>¿Cómo fue tu experiencia? Cuéntanos en menos de un minuto:</p>
       <p><a href="${enlace}" style="display:inline-block;padding:10px 20px;background:#0f172a;color:#fff;
       text-decoration:none;border-radius:6px;">Responder encuesta</a></p>
@@ -81,9 +111,9 @@ Deno.serve(async (req) => {
 
     try {
       await enviarCorreo({
-        destinatarioEmail: cliente.email,
+        destinatarioEmail: correoDestino,
         destinatarioNombre: nombreCliente,
-        asunto: `¿Cómo estuvo tu visita a ${empresa.nombre}?`,
+        asunto: `${empresa.es_demo ? '[Demo] ' : ''}¿Cómo estuvo tu visita a ${empresa.nombre}?`,
         html,
       })
 
