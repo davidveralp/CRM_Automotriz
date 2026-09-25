@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { TemaProvider, useTema } from './lib/tema'
 import ErrorBoundary from './components/ErrorBoundary'
 import Menu from './components/Menu'
+import BarraSuperior from './components/BarraSuperior'
 import ModalCorreosDemo from './components/ModalCorreosDemo'
 import RutaProtegida from './components/RutaProtegida'
 import Login from './pages/Login'
@@ -26,17 +28,28 @@ import OrdenEgreso from './pages/OrdenEgreso'
 import CuentasPorCobrar from './pages/CuentasPorCobrar'
 import PuntoVenta from './pages/PuntoVenta'
 import Mensajes from './pages/Mensajes'
+import Perfil from './pages/Perfil'
 import Facturacion from './pages/Facturacion'
 import FacturacionDetalle from './pages/FacturacionDetalle'
 
 function Layout({ children }) {
+  const { tema } = useTema()
+  const oscuro = tema === 'oscuro'
+
+  // La clase "dark" vive solo en esta envoltura: el login y la encuesta pública
+  // quedan siempre con su aspecto de siempre.
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <Menu />
-      <main className="min-w-0 flex-1">
-        <ErrorBoundary>{children}</ErrorBoundary>
-      </main>
-      <ModalCorreosDemo />
+    <div className={oscuro ? 'dark' : ''} style={{ colorScheme: oscuro ? 'dark' : 'light' }}>
+      <div className="flex min-h-screen bg-slate-50">
+        <Menu />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <BarraSuperior />
+          <main className="min-w-0 flex-1">
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </main>
+        </div>
+        <ModalCorreosDemo />
+      </div>
     </div>
   )
 }
@@ -52,12 +65,14 @@ function paginaProtegida(elemento, rolesPermitidos) {
 function App() {
   return (
     <AuthProvider>
+      <TemaProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/encuesta/:token" element={<EncuestaPublica />} />
           <Route path="/cambiar-clave" element={paginaProtegida(<CambiarClave />)} />
           <Route path="/" element={paginaProtegida(<Inicio />)} />
+          <Route path="/perfil" element={paginaProtegida(<Perfil />)} />
           <Route path="/clientes" element={paginaProtegida(<Clientes />)} />
           <Route path="/clientes/:id" element={paginaProtegida(<ClienteDetalle />)} />
           <Route path="/ingresos/nuevo" element={paginaProtegida(<NuevoIngreso />)} />
@@ -116,6 +131,7 @@ function App() {
           />
         </Routes>
       </BrowserRouter>
+      </TemaProvider>
     </AuthProvider>
   )
 }

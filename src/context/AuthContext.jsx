@@ -66,7 +66,13 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut()
   }
 
-  const valor = { sesion, usuario, cargando, error, cerrarSesion }
+  // Refleja en pantalla un cambio ya guardado en la base (ej. el nombre editado
+  // en "Editar perfil") sin volver a pedir toda la fila.
+  function actualizarUsuarioLocal(cambios) {
+    setUsuario((previo) => (previo ? { ...previo, ...cambios } : previo))
+  }
+
+  const valor = { sesion, usuario, cargando, error, cerrarSesion, actualizarUsuarioLocal }
 
   return <AuthContext.Provider value={valor}>{children}</AuthContext.Provider>
 }
