@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
-import { EVENTO_ABRIR_CORREOS_DEMO } from './ModalCorreosDemo'
+import { pedirCorreosDemo } from '../lib/correosDemo'
 
 const ETIQUETAS_ROL = {
   socia: 'Socia',
@@ -208,7 +208,7 @@ function Menu() {
           {usuario.empresas?.es_demo && (
             <button
               type="button"
-              onClick={() => window.dispatchEvent(new Event(EVENTO_ABRIR_CORREOS_DEMO))}
+              onClick={pedirCorreosDemo}
               className="w-full rounded-lg px-3 py-2 text-left text-sm text-didial-amber transition-colors hover:bg-white/5"
             >
               Correos de prueba

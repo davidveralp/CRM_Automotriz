@@ -15,12 +15,15 @@
 // reintenta la llamada).
 //
 // En una empresa demo (empresas.es_demo) el aviso no va a los usuarios
-// admin/socia de los datos de ejemplo sino al correo de asesor de prueba
-// que la persona ingresó al entrar a la demo.
+// admin/socia de los datos de ejemplo sino al correo de asesor de prueba que
+// la persona ingresó al entrar a la demo. Ese correo NO está en la base: viaja
+// en el enlace de la encuesta junto con una firma HMAC que lo ata a este token
+// (_shared/demo.ts); sin firma válida no se envía nada.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { respuestaJson, respuestaPreflight } from '../_shared/cors.ts'
 import { enviarCorreo } from '../_shared/brevo.ts'
 import { formatearPatente } from '../_shared/patente.ts'
+import { firmaCorreoAsesorValida, normalizarCorreo } from '../_shared/demo.ts'
 
 const ETIQUETA_AREA: Record<string, string> = {
   entrega_tiempo: 'Entrega a tiempo',
@@ -48,9 +51,10 @@ Deno.serve(async (req) => {
   const appUrl = Deno.env.get('APP_URL') || 'http://localhost:5173'
 
   let token: string | undefined
+  let cuerpo: Record<string, unknown> = {}
   try {
-    const cuerpo = await req.json()
-    token = cuerpo?.token
+    cuerpo = (await req.json()) ?? {}
+    token = typeof cuerpo.token === 'string' ? cuerpo.token : undefined
   } catch {
     return respuestaJson({ error: { mensaje: 'Cuerpo inválido, se esperaba { token }.' } }, 400)
   }
@@ -106,17 +110,14 @@ Deno.serve(async (req) => {
     return respuestaJson({ data: { enviado: false, motivo: 'ot_no_encontrada' } })
   }
 
-  const { data: empresa } = await supabase
-    .from('empresas')
-    .select('es_demo, demo_correo_asesor')
-    .eq('id', trabajo.empresa_id)
-    .maybeSingle()
+  const { data: empresa } = await supabase.from('empresas').select('es_demo').eq('id', trabajo.empresa_id).maybeSingle()
   const esDemo = Boolean(empresa?.es_demo)
 
   let destinatarios: { correo: string; nombre_completo: string }[] | null
   if (esDemo) {
-    destinatarios = empresa?.demo_correo_asesor
-      ? [{ correo: empresa.demo_correo_asesor, nombre_completo: 'Asesor (prueba de la demo)' }]
+    const correoAsesor = normalizarCorreo(cuerpo.correo_asesor_demo)
+    destinatarios = (await firmaCorreoAsesorValida(correoAsesor, token, cuerpo.firma_demo))
+      ? [{ correo: correoAsesor, nombre_completo: 'Asesor (prueba de la demo)' }]
       : []
   } else {
     const { data } = await supabase
@@ -134,7 +135,7 @@ Deno.serve(async (req) => {
       encuesta_id: encuesta.id,
       operacion: 'notificar_encuesta_negativa',
       mensaje: esDemo
-        ? 'Demo sin correo de prueba del asesor: ingrésalo en "Correos de prueba".'
+        ? 'Demo: el enlace de la encuesta no trae un correo de asesor con firma válida (usa el enlace del correo de prueba).'
         : 'No hay usuarios admin/socia activos a quién avisar.',
     })
     return respuestaJson({ data: { enviado: false, motivo: 'sin_destinatarios' } })

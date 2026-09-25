@@ -1,54 +1,35 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
+import {
+  EVENTO_ABRIR_CORREOS_DEMO,
+  estadoCorreosDemo,
+  guardarCorreosDemo,
+  omitirCorreosDemo,
+} from '../lib/correosDemo'
 
-// Solo en el tenant de demostración (empresas.es_demo): al entrar se piden el
-// correo del cliente y el del asesor -pueden ser el mismo- para que quien
-// prueba reciba de verdad los correos del sistema (encuesta de postventa al
-// cliente, aviso de encuesta negativa al asesor). Ver 0040_demo_correos_de_prueba.sql.
-//
-// Se pregunta una vez por sesión del navegador. Los correos NO se precargan
-// desde la base: el tenant es compartido y se filtraría el correo de la
-// persona que probó antes.
-const CLAVE_SESION = 'correosDemoResueltos'
-export const EVENTO_ABRIR_CORREOS_DEMO = 'abrir-correos-demo'
-
-function leerSesion() {
-  try {
-    return sessionStorage.getItem(CLAVE_SESION)
-  } catch {
-    return null
-  }
-}
-
-function marcarSesion(valor) {
-  try {
-    sessionStorage.setItem(CLAVE_SESION, valor)
-  } catch {
-    // Sin sessionStorage (ventana privada): se volverá a preguntar, sin romper nada.
-  }
-}
-
+// Solo en el tenant de demostración (empresas.es_demo): en CADA inicio de
+// sesión se piden el correo del cliente y el del asesor -pueden ser el mismo-
+// para que quien prueba reciba de verdad los correos del sistema (encuesta de
+// postventa al cliente, aviso de encuesta negativa al asesor). Los correos se
+// quedan en la pestaña (sessionStorage) y no se guardan en la base: ver
+// src/lib/correosDemo.js.
 function ModalCorreosDemo() {
-  const { usuario } = useAuth()
+  const { sesion, usuario } = useAuth()
   const esDemo = Boolean(usuario?.empresas?.es_demo)
 
   const [abierto, setAbierto] = useState(false)
   const [correoCliente, setCorreoCliente] = useState('')
   const [correoAsesor, setCorreoAsesor] = useState('')
   const [mismoCorreo, setMismoCorreo] = useState(true)
-  const [guardando, setGuardando] = useState(false)
-  const [error, setError] = useState(null)
   const [guardado, setGuardado] = useState(false)
 
   useEffect(() => {
-    if (esDemo && !leerSesion()) setAbierto(true)
-  }, [esDemo])
+    if (esDemo && estadoCorreosDemo(sesion) === 'pendiente') setAbierto(true)
+  }, [esDemo, sesion])
 
   useEffect(() => {
     if (!esDemo) return undefined
     const abrir = () => {
-      setError(null)
       setGuardado(false)
       setAbierto(true)
     }
@@ -58,27 +39,16 @@ function ModalCorreosDemo() {
 
   if (!esDemo || !abierto) return null
 
-  async function guardar(evento) {
+  function guardar(evento) {
     evento.preventDefault()
-    setError(null)
-    setGuardando(true)
-    try {
-      const { error: errorRpc } = await supabase.rpc('demo_guardar_correos', {
-        p_correo_cliente: correoCliente,
-        p_correo_asesor: mismoCorreo ? correoCliente : correoAsesor,
-      })
-      if (errorRpc) throw errorRpc
-      marcarSesion('guardados')
-      setGuardado(true)
-    } catch (excepcion) {
-      setError(excepcion.message || 'No se pudieron guardar los correos.')
-    } finally {
-      setGuardando(false)
-    }
+    const cliente = correoCliente.trim().toLowerCase()
+    const asesor = (mismoCorreo ? correoCliente : correoAsesor).trim().toLowerCase()
+    guardarCorreosDemo(sesion, cliente, asesor)
+    setGuardado(true)
   }
 
   function omitir() {
-    if (!leerSesion()) marcarSesion('omitido')
+    if (estadoCorreosDemo(sesion) === 'pendiente') omitirCorreosDemo(sesion)
     setAbierto(false)
   }
 
@@ -93,7 +63,7 @@ function ModalCorreosDemo() {
         {guardado ? (
           <>
             <h2 id="titulo-correos-demo" className="text-lg font-semibold text-slate-900">
-              Listo, correos guardados
+              Listo, correos de esta sesión
             </h2>
             <p className="mt-2 text-sm text-slate-600">
               Para probarlos: en <strong>Oportunidades</strong> pulsa &quot;Enviar encuestas de postventa pendientes&quot;
@@ -163,18 +133,17 @@ function ModalCorreosDemo() {
               </div>
             )}
 
-            <p className="mt-4 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              La demo es compartida: si otra persona guarda sus correos después, los correos pasan a ser suyos.
+            <p className="mt-4 rounded bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Los correos se usan solo durante esta sesión: no se guardan en la base de datos y se vuelven a
+              pedir en el próximo inicio de sesión.
             </p>
-
-            {error && <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
             <div className="mt-5 flex items-center justify-end gap-2">
               <button type="button" className="btn-ghost" onClick={omitir}>
                 Ahora no
               </button>
-              <button type="submit" className="btn-primary" disabled={guardando}>
-                {guardando ? 'Guardando…' : 'Guardar correos'}
+              <button type="submit" className="btn-primary">
+                Continuar
               </button>
             </div>
           </form>

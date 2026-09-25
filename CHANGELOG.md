@@ -1,5 +1,17 @@
 # Registro de cambios
 
+## 2026-09-25 — Correos de prueba de la demo sin guardar en la base (`0041_demo_correos_sin_persistir.sql`)
+
+**Qué se entrega:** reemplaza el enfoque de `0040`. Los correos de prueba se piden en **cada inicio de sesión** de la demo y ya no se guardan en la base: no hay nada que limpiar entre pruebas.
+
+- **Dónde viven:** solo en la pestaña (`sessionStorage`, `src/lib/correosDemo.js`). Cada inicio de sesión se reconoce por `sesion.user.last_sign_in_at`, que no cambia al recargar ni al refrescar el token; con otro inicio de sesión se vuelve a preguntar. Al enviar, el navegador manda los correos en el cuerpo de la llamada.
+- **Aviso de encuesta negativa (otra pantalla, incluso otro dispositivo):** el correo del asesor viaja en el enlace de la encuesta (`?da=correo&ds=firma`) con una firma HMAC-SHA256 que lo ata a ese token (`_shared/demo.ts`). `notificar-encuesta-negativa` solo envía con firma válida, así nadie puede fabricar un enlace que escriba a una dirección ajena. Probado localmente: firma válida, y rechaza otro correo, otro token, firma alterada y sin firma.
+- **Demo repetible sin limpiar:** en una empresa demo, `enviar-encuestas-pendientes` toma la encuesta de la OT entregada más reciente y la **reinicia** (sin respuestas, token nuevo, sin el aviso anterior) antes de enviarla; cada prueba parte de cero. Envía 1 correo por prueba (antes eran 4). Sin correos válidos en la llamada responde 400.
+- **Migración `0041`:** elimina `demo_guardar_correos` y las columnas `demo_correo_cliente` / `demo_correo_asesor` de `0040` (y los correos de prueba que hubieran quedado ahí). `empresas.es_demo` se mantiene. Va DESPUÉS de desplegar las funciones nuevas.
+- **El job automático** (service role) se salta las empresas demo: sus clientes son ficticios.
+- **Hallazgo al probar:** al correr `scripts/crear-demo.mjs` (cambia contraseña y correos con la API admin) Supabase cierra las sesiones de esas cuentas. El navegador conserva un token que aún no vence -la app se ve normal, porque PostgREST solo verifica la firma-, pero las Edge Functions que validan la sesión con `auth.getUser` responden "Auth session missing!" (401). Después de correr ese script hay que cerrar sesión y volver a entrar.
+- Desplegadas: `enviar-encuestas-pendientes` v11 y `notificar-encuesta-negativa` v4 (`verify_jwt` sin cambios). Verificado en el navegador: el modal aparece al entrar, "Ahora no" lo recuerda, otro inicio de sesión lo vuelve a pedir, y enviar sin correos lo pide sin llamar a la función. **No probado:** el envío real por Brevo de punta a punta (requiere sesión nueva y una dirección real).
+
 ## 2026-09-25 — Correos de prueba en la demo (`0040_demo_correos_de_prueba.sql`)
 
 **Qué se entrega:** al probar la demo se pide el correo del cliente y el del asesor (pueden ser el mismo) para recibir de verdad los correos del sistema, sin que la demo le escriba jamás a un cliente real ni a las direcciones ficticias de los datos de ejemplo.

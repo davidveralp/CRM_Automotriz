@@ -107,7 +107,16 @@ function EncuestaPublica() {
       if (clasificacion === 'negativo') {
         // Best-effort: si el aviso interno falla, el cliente igual ve su
         // agradecimiento -esto no le pertenece a su experiencia-.
-        invocarFuncion('notificar-encuesta-negativa', { body: { token } }).catch(() => {})
+        // En la demo, el enlace del correo trae el correo del asesor de prueba
+        // (da) y su firma (ds): la función los valida, no confía en ellos.
+        const parametros = new URLSearchParams(window.location.search)
+        invocarFuncion('notificar-encuesta-negativa', {
+          body: {
+            token,
+            correo_asesor_demo: parametros.get('da') || undefined,
+            firma_demo: parametros.get('ds') || undefined,
+          },
+        }).catch(() => {})
       }
     } catch {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
