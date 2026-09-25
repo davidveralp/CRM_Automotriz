@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient'
 import { invocarFuncion } from '../lib/invocarFuncion'
 import { PREGUNTAS, ETIQUETA_COMO_CONOCIO } from '../lib/encuestas'
 
+import { formatearPatente } from '../lib/patente'
 const CARAS = ['😞', '🙁', '😐', '🙂', '😄']
 
 const MENSAJE_POR_CLASIFICACION = {
@@ -158,7 +159,7 @@ function EncuestaPublica() {
           <form onSubmit={enviarRespuesta}>
             <h1 className="mb-1 text-lg font-semibold text-slate-900">¿Cómo fue tu experiencia?</h1>
             <p className="mb-4 text-sm text-slate-500">
-              {datos?.marca} {datos?.modelo} · patente {datos?.patente} · OT {datos?.numero_ot}
+              {datos?.marca} {datos?.modelo} · patente {formatearPatente(datos?.patente)} · OT {datos?.numero_ot}
             </p>
 
             {PREGUNTAS.map((pregunta) => (

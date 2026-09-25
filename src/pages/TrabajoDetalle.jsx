@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { invocarFuncion } from '../lib/invocarFuncion'
 import FirmaCanvas from '../components/FirmaCanvas'
 
+import { formatearPatente } from '../lib/patente'
 const ETIQUETA_AREA = {
   mano_obra: 'Mano de obra',
   repuestos: 'Repuestos',
@@ -520,7 +521,7 @@ function TrabajoDetalle() {
       <div className="mb-4 flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">
-            OT {trabajo.numero_ot} — {trabajo.vehiculos?.patente}
+            OT {trabajo.numero_ot} — {formatearPatente(trabajo.vehiculos?.patente)}
           </h1>
           <p className="text-sm text-slate-500">
             {trabajo.vehiculos?.marca} {trabajo.vehiculos?.modelo} {trabajo.vehiculos?.anio || ''} ·{' '}
@@ -854,7 +855,7 @@ function TrabajoDetalle() {
               const telefonoCliente = trabajo?.clientes?.telefono_norm
               const linkWhatsapp = telefonoCliente
                 ? `https://wa.me/${telefonoCliente.replace('+', '')}?text=${encodeURIComponent(
-                    `Hola ${nombreCliente(trabajo?.clientes)}, te compartimos el presupuesto ${p.correlativo} para tu ${trabajo?.vehiculos?.marca} ${trabajo?.vehiculos?.modelo} (${trabajo?.vehiculos?.patente}). Total: ${formatoMoneda(totalPresupuesto)}. El detalle completo está en el documento adjunto. Quedamos atentos a tus consultas.`
+                    `Hola ${nombreCliente(trabajo?.clientes)}, te compartimos el presupuesto ${p.correlativo} para tu ${trabajo?.vehiculos?.marca} ${trabajo?.vehiculos?.modelo} (${formatearPatente(trabajo?.vehiculos?.patente)}). Total: ${formatoMoneda(totalPresupuesto)}. El detalle completo está en el documento adjunto. Quedamos atentos a tus consultas.`
                   )}`
                 : null
               return (

@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import { invocarFuncion } from '../lib/invocarFuncion'
 
+import { formatearPatente } from '../lib/patente'
 const ETIQUETA_ESTADO = {
   pendiente: 'Pendiente',
   contactado: 'Contactado',
@@ -142,7 +143,7 @@ function Oportunidades() {
                       <p className="text-xs text-slate-400">{trabajo?.clientes?.telefono}</p>
                     </td>
                     <td className="px-3 py-2 text-slate-600">
-                      {trabajo?.vehiculos?.patente} — {trabajo?.vehiculos?.marca} {trabajo?.vehiculos?.modelo}
+                      {formatearPatente(trabajo?.vehiculos?.patente)} — {trabajo?.vehiculos?.marca} {trabajo?.vehiculos?.modelo}
                     </td>
                     <td className="px-3 py-2 text-slate-600">{oportunidad.descripcion}</td>
                     <td className="px-3 py-2">

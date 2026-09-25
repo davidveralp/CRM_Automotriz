@@ -6,6 +6,7 @@ import EncabezadoDocumento from '../components/EncabezadoDocumento'
 import CampoDato from '../components/CampoDato'
 import BloqueTotales from '../components/BloqueTotales'
 
+import { formatearPatente } from '../lib/patente'
 const ETIQUETA_ESTADO = {
   borrador: 'Borrador',
   enviado: 'Enviado · esperando respuesta',
@@ -151,7 +152,7 @@ function PresupuestoDetalle() {
   const linkWhatsapp = telefonoCliente
     ? `https://wa.me/${telefonoCliente.replace('+', '')}?text=${encodeURIComponent(
         [
-          `Hola ${nombreCliente(trabajo?.clientes)}, te compartimos el presupuesto ${presupuesto.correlativo} para tu ${trabajo?.vehiculos?.marca} ${trabajo?.vehiculos?.modelo} (${trabajo?.vehiculos?.patente}):`,
+          `Hola ${nombreCliente(trabajo?.clientes)}, te compartimos el presupuesto ${presupuesto.correlativo} para tu ${trabajo?.vehiculos?.marca} ${trabajo?.vehiculos?.modelo} (${formatearPatente(trabajo?.vehiculos?.patente)}):`,
           '',
           ...items.map((item) => `- ${item.detalle}: $${formatoNumero(item.total_linea)}`),
           '',
@@ -265,7 +266,7 @@ function PresupuestoDetalle() {
         />
 
         <div className="mb-3 grid grid-cols-4 gap-x-4 gap-y-2 border-b border-slate-300 pb-3">
-          <CampoDato etiqueta="Patente" valor={trabajo?.vehiculos?.patente} />
+          <CampoDato etiqueta="Patente" valor={formatearPatente(trabajo?.vehiculos?.patente)} />
           <CampoDato etiqueta="R.U.T." valor={trabajo?.clientes?.rut} />
           <CampoDato etiqueta="Color" valor={trabajo?.vehiculos?.color} />
           <CampoDato etiqueta="Año" valor={trabajo?.vehiculos?.anio} />

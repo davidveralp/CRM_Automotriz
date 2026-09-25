@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 
+import { formatearPatente } from '../lib/patente'
 const ETIQUETA_ESTADO = {
   agendada: 'Agendada',
   confirmada: 'Confirmada',
@@ -303,7 +304,7 @@ function Agenda() {
                     <p className="text-xs text-slate-400">{cita.clientes?.telefono}</p>
                   </td>
                   <td className="px-3 py-2 text-slate-600">
-                    {cita.vehiculos ? `${cita.vehiculos.patente} — ${cita.vehiculos.marca} ${cita.vehiculos.modelo}` : 'Sin definir'}
+                    {cita.vehiculos ? `${formatearPatente(cita.vehiculos.patente)} — ${cita.vehiculos.marca} ${cita.vehiculos.modelo}` : 'Sin definir'}
                   </td>
                   <td className="px-3 py-2 text-slate-600">
                     {cita.descripcion || '—'}
@@ -858,7 +859,7 @@ function FormularioNuevaCita({ empresaId, usuarioId, tiposIsla, fechaInicial, pr
               <option value="">Sin definir todavía</option>
               {vehiculosCliente.map((vehiculo) => (
                 <option key={vehiculo.id} value={vehiculo.id}>
-                  {vehiculo.patente} — {vehiculo.marca} {vehiculo.modelo}
+                  {formatearPatente(vehiculo.patente)} — {vehiculo.marca} {vehiculo.modelo}
                 </option>
               ))}
             </select>

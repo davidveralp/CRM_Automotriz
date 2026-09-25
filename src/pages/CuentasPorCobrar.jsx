@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 
+import { formatearPatente } from '../lib/patente'
 function nombreCliente(cliente) {
   if (!cliente) return '—'
   return cliente.razon_social || [cliente.nombre, cliente.apellido].filter(Boolean).join(' ')
@@ -152,7 +153,7 @@ function CuentasPorCobrar() {
                     </td>
                     <td className="px-3 py-2">{nombreCliente(f.clientes)}</td>
                     <td className="px-3 py-2">
-                      {f.vehiculos?.patente} {f.vehiculos?.marca} {f.vehiculos?.modelo}
+                      {formatearPatente(f.vehiculos?.patente)} {f.vehiculos?.marca} {f.vehiculos?.modelo}
                     </td>
                     <td className="px-3 py-2">{f.numero_documento_facturacion}</td>
                     <td className={`px-3 py-2 ${vencida ? 'font-medium text-red-600' : ''}`}>

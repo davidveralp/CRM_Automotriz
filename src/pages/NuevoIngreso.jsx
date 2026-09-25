@@ -9,6 +9,7 @@ import CampoDato from '../components/CampoDato'
 import BloqueFirma from '../components/BloqueFirma'
 import BloqueTotales from '../components/BloqueTotales'
 
+import { formatearPatente, formatearPatenteEntrada } from '../lib/patente'
 function normalizarPatenteLocal(patente) {
   return (patente || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
@@ -304,7 +305,7 @@ function NuevoIngreso() {
           .from('vehiculos')
           .insert({
             empresa_id: usuario.empresa_id,
-            patente: patenteBusqueda,
+            patente: normalizarPatenteLocal(patenteBusqueda),
             marca: marcaNueva,
             modelo: modeloNuevo,
             anio: anioNuevo ? Number(anioNuevo) : null,
@@ -480,7 +481,7 @@ function NuevoIngreso() {
             <CampoDato etiqueta="Puertas" valor={puertasVehiculo} />
             <CampoDato etiqueta="Cía. Aseguradora" valor={aseguradoraVehiculo} className="col-span-2" />
             <CampoDato etiqueta="Kilometraje" valor={kilometraje} className="col-span-2" />
-            <CampoDato etiqueta="Patente" valor={patenteBusqueda.toUpperCase()} className="col-span-2" />
+            <CampoDato etiqueta="Patente" valor={formatearPatente(patenteBusqueda)} className="col-span-2" />
           </div>
 
           <div className="mb-3 border-b border-slate-300 pb-3">
@@ -537,7 +538,7 @@ function NuevoIngreso() {
           type="text"
           required
           value={patenteBusqueda}
-          onChange={(evento) => setPatenteBusqueda(evento.target.value)}
+          onChange={(evento) => setPatenteBusqueda(formatearPatenteEntrada(evento.target.value))}
           placeholder="Patente (GH TY 34)"
           className="w-full rounded border border-slate-300 px-3 py-2 text-sm uppercase"
         />
@@ -555,7 +556,7 @@ function NuevoIngreso() {
       {busquedaHecha && vehiculo && (
         <div className="mb-6 max-w-md rounded border border-slate-200 bg-white p-4">
           <p className="font-medium text-slate-800">
-            {vehiculo.patente} — {vehiculo.marca} {vehiculo.modelo} {vehiculo.anio || ''}
+            {formatearPatente(vehiculo.patente)} — {vehiculo.marca} {vehiculo.modelo} {vehiculo.anio || ''}
           </p>
           {clientesDelVehiculo.length === 0 && (
             <p className="mt-2 text-sm text-amber-700">Este vehículo no tiene un cliente vinculado todavía.</p>

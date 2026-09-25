@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 
+import { formatearPatente } from '../lib/patente'
 const ETIQUETA_ESTADO = {
   borrador: 'Borrador',
   enviado: 'Enviado · esperando respuesta',
@@ -152,7 +153,7 @@ function Presupuestos() {
                     <td className="px-3 py-2">OT {trabajo?.numero_ot}</td>
                     <td className="px-3 py-2">{nombreCliente(trabajo?.clientes)}</td>
                     <td className="px-3 py-2">
-                      {trabajo?.vehiculos?.patente} {trabajo?.vehiculos?.marca} {trabajo?.vehiculos?.modelo}
+                      {formatearPatente(trabajo?.vehiculos?.patente)} {trabajo?.vehiculos?.marca} {trabajo?.vehiculos?.modelo}
                     </td>
                     <td className="px-3 py-2">
                       <span className={`rounded px-2 py-0.5 text-xs ${COLOR_ESTADO[p.estado] || 'bg-slate-100'}`}>

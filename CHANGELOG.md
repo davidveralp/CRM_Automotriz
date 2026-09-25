@@ -1,5 +1,38 @@
 # Registro de cambios
 
+## 2026-09-25 — Formato de patente XX XX XX y demo sin marca ajena (rama limpia)
+
+**Qué se entrega:** dos ajustes pedidos antes de publicar la rama de la demo.
+
+- **Formato de patente `XX XX XX` (a petición del cliente), solo de presentación:** nuevo `src/lib/patente.js` (`formatearPatente`, `formatearPatenteEntrada`, `normalizarPatente`). Se aplica en las 17 pantallas que muestran patente (Inicio, Trabajos, Taller, Agenda, Mensajes, Presupuestos, Cuentas por cobrar, Encuestas, Oportunidades, RADAR, egreso, facturación, encuesta pública, etc.) y como máscara mientras se escribe en Nuevo ingreso y Agregar vehículo. Lo guardado en la base no cambia: los vehículos nuevos se guardan limpios (mayúsculas, sin espacios) y todas las búsquedas siguen usando `patente_norm`, así que tampoco cambia lo que se envía a ClickUp ni los datos del tenant real.
+- **Demo neutra y con los logos de Didial:** el tenant demo ya no usa ningún nombre, logo, dominio de correo ni patente ajenos al proyecto. Se restauran los logos de Didial en `public/`, la empresa demo usa el logo de Didial, las patentes de la demo son `PRUE01` a `PRUE29`, los correos son `demo-*@example.com` y la contraseña de demostración cambió. Los archivos se renombran (`0036_tenant_demo.sql`, `scripts/crear-demo.mjs`); el script ahora se puede volver a correr y actualiza correos y contraseña de cuentas ya creadas.
+- **Rama:** la rama subida antes se reemplaza por una recreada desde `main` con un solo commit limpio.
+
+## 2026-09-25 — Datos de demostración ampliados en el tenant demo (`0039_datos_demo_ampliados.sql`)
+
+**Qué se entrega:** el tenant demo de `0036` (12 clientes, 10 OT) quedaba corto para mostrar la app completa. `0039` lo amplía sin tocar el tenant real de Didial (todo cuelga del `empresa_id` fijo de la demo).
+
+- **Contenido:** 10 clientes y vehículos nuevos (patentes `PRUE20` a `PRUE29`, RUT válidos calculados con `rut_dv_calculado`); 24 OT entregadas en ~6 meses con clientes recurrentes, diagnósticos con RADAR y checklist, presupuestos aceptados/parciales, ítems rechazados, 6 postergados que alimentan Oportunidades (una contactada, una convertida, una descartada), 2 retrabajos, 3 facturas pendientes (2 vencidas), 20 encuestas respondidas (2 negativas) y 4 pendientes; 5 OT activas nuevas (una con un repuesto sin precio que dispara la notificación real); bodega con 6 productos más, 2 proveedores, compras con fecha pasada, ajuste y devolución (4 productos bajo su mínimo); punto de venta con 5 ventas cerradas y 1 abierta; 19 citas en pasado y próximos 7 días hábiles; 7 contactos de WhatsApp en distintos pasos del bot (uno en pausa por un humano); técnicos asignados a islas y el plano del taller dibujado con 10 vehículos en sus puestos (capacidades iguales a las de `0036`, la Agenda no cambia).
+- **Los triggers reales hacen su trabajo:** encuestas al entregar, notificaciones de cita nueva y de repuesto pendiente, oportunidades por postergado, descuento de stock al verificar y en cada venta, liberación de puestos. Solo se limpian a mano las notificaciones de citas ya terminadas (mismo criterio que `0036`).
+- **No re-ejecutable a propósito:** aborta con un mensaje claro si detecta la patente `PRUE20`, en vez de duplicar datos.
+- **Error propio corregido en la primera ejecución real:** `v_areas || 'texto'` con un literal sin tipo lo interpreta Postgres como array (`malformed array literal`). Se usa `array_append(v_areas, 'texto'::text)`. El bloque es atómico, así que la ejecución fallida no dejó nada.
+- **Corrección de un dato de `0036`:** su verificación decía 14 vehículos; los correctos son 13 (ese número venía mal escrito en el comentario, los datos estaban bien).
+- Verificado por SQL con la consulta final de la migración: clientes 22, vehículos 23, OT 39, entregadas 28, encuestas respondidas 23, oportunidades 6, productos 12 (4 bajo mínimo), ventas 6, citas 24, contactos WA 10, plano 14, ocupación 10.
+
+## 2026-09-25 — Plano del taller en vivo, reemplaza "Taller por islas" (`0038_plano_taller.sql`)
+
+**Qué se entrega:** la pantalla `/taller` deja de ser una lista de cargas por técnico y pasa a ser un plano (layout) dibujable del taller, con dos modos: **En vivo** y **Editar plano**.
+
+- **Figuras:** isla con elevador, sin elevador, con pozo, alineadora, vulcanización, espacio de pulmón, desabolladura y pintura, isla de lavado y oficina, cada una con su dibujo interno. Grilla de 40x24 celdas, sin superposiciones.
+- **Editor** (admin, socia, jefe de taller): arrastrar, redimensionar con la esquina, girar 90 grados (intercambia ancho y alto, por eso no hay columna de rotación), flechas del teclado, campos numéricos de columna/fila/ancho/alto, nombre, técnico responsable y vehículos a la vez. Cada cambio se guarda al soltar y se revierte si el servidor lo rechaza. Botón "Cargar plano de ejemplo" cuando está vacío.
+- **En vivo:** cada puesto muestra patente, marca/modelo, estado de ClickUp y tiempo de la OT que tiene encima; desde el panel se ubica una OT activa en un puesto o se libera. Una OT que pasa a entregada/anulada se libera sola (trigger). Resumen de puestos libres/ocupados y lista de OT activas sin puesto.
+- **Agenda:** cada puesto se asocia a un tipo de isla y la capacidad de ese tipo (`tipos_isla.capacidad`) pasa a ser la cantidad de puestos dibujados. Solo se sobreescribe con al menos un puesto, así que un plano vacío no deja la Agenda sin capacidad.
+- **Base de datos:** `plano_elementos` y `plano_ocupacion` (tabla aparte para no chocar con el bloqueo de OT entregadas de 0026), RLS (lectura para toda la empresa, escritura solo jefe de taller/admin/socia) y triggers de capacidad de puesto, de sincronización con la Agenda y de liberación al cerrar la OT. Verificada por SQL: 2 tablas, RLS en ambas, 7 políticas, 4 triggers.
+- **Retirado:** la asignación de técnicos por tipo de isla (`usuarios_islas`) ya no tiene pantalla; la tabla queda intacta. El responsable ahora se asigna por puesto.
+- **Ajuste general:** el `<main>` del layout con `min-w-0`, para que un contenido ancho (el lienzo) haga scroll dentro de su contenedor y no ensanche toda la página.
+- **Probado en el navegador contra el tenant real** (solo con figuras sin tipo de isla, para no alterar la capacidad de la Agenda): crear, mover, colisión rechazada, redimensionar, girar, renombrar, eliminar, persistencia tras recargar y ubicar dos OT en un pulmón. Las figuras de prueba se limpian con un script aparte. La capacidad de la Agenda y la liberación automática se prueban por SQL dentro de una transacción que se revierte.
+- `npm run verificar` y `npx vite build` sin errores. El heurístico de catálogos-como-texto dio un falso positivo con `elemento={elemento}` dentro de un `.map`; se resolvió extrayendo el cuerpo del `.map` a una función.
+
 ## 2026-09-22 — Revisión del bug de modal `items-center` en Bodega/Clientes/ClienteDetalle (tarea pendiente de la sesión de Agenda)
 
 **Qué se entrega:** la sesión de Agenda dejó como pendiente confirmar si el mismo bug de `items-center` (formulario centrado con Flexbox que queda parcialmente inalcanzable con scroll cuando crece más alto que la pantalla) también afectaba a los otros 3 modales del proyecto con el patrón `fixed inset-0 flex items-center justify-center`. No se asumió que sí o que no -se revisó cada uno.

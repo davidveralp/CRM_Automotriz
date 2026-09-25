@@ -18,19 +18,21 @@ import EncuestaPublica from './pages/EncuestaPublica'
 import Agenda from './pages/Agenda'
 import Informes from './pages/Informes'
 import Bodega from './pages/Bodega'
-import TallerIslas from './pages/TallerIslas'
+import Taller from './pages/Taller'
 import Presupuestos from './pages/Presupuestos'
 import PresupuestoDetalle from './pages/PresupuestoDetalle'
 import OrdenEgreso from './pages/OrdenEgreso'
 import CuentasPorCobrar from './pages/CuentasPorCobrar'
 import PuntoVenta from './pages/PuntoVenta'
 import Mensajes from './pages/Mensajes'
+import Facturacion from './pages/Facturacion'
+import FacturacionDetalle from './pages/FacturacionDetalle'
 
 function Layout({ children }) {
   return (
     <div className="flex min-h-screen bg-slate-50">
       <Menu />
-      <main className="flex-1">
+      <main className="min-w-0 flex-1">
         <ErrorBoundary>{children}</ErrorBoundary>
       </main>
     </div>
@@ -69,7 +71,7 @@ function App() {
           />
           <Route
             path="/taller"
-            element={paginaProtegida(<TallerIslas />, ['admin', 'socia', 'jefe_taller'])}
+            element={paginaProtegida(<Taller />, ['admin', 'socia', 'jefe_taller'])}
           />
           <Route
             path="/presupuestos"
@@ -92,6 +94,14 @@ function App() {
           <Route
             path="/cuentas-por-cobrar"
             element={paginaProtegida(<CuentasPorCobrar />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller', 'asesor'])}
+          />
+          <Route
+            path="/facturacion"
+            element={paginaProtegida(<Facturacion />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller', 'asesor'])}
+          />
+          <Route
+            path="/facturacion/:id"
+            element={paginaProtegida(<FacturacionDetalle />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller', 'asesor'])}
           />
           <Route path="/informes" element={paginaProtegida(<Informes />, ['admin', 'socia'])} />
           <Route
