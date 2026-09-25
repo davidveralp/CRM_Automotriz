@@ -2,15 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import {
+  CATEGORIAS_PLANO,
   CELDA,
   COLUMNAS,
   FILAS,
   ORDEN_PALETA,
-  PLANO_EJEMPLO,
+  PLANO_DIDIAL,
   TIPOS_PLANO,
   buscarHueco,
   buscarIslaPorNombre,
+  contarPorCategoria,
   formatoTranscurrido,
+  islaNombreDeItem,
   nombreCliente,
   orientacionLarga,
   posicionValida,
@@ -53,18 +56,18 @@ function Decoracion({ elemento }) {
 
   switch (elemento.tipo) {
     case 'isla_elevador':
-      return <div className="pointer-events-none absolute inset-0">{rieles('bg-sky-700/45')}</div>
+      return <div className="pointer-events-none absolute inset-0">{rieles('bg-red-700/45')}</div>
     case 'isla_simple':
       return (
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute inset-[18%] rounded-xl border-2 border-dashed border-slate-400/70" />
+          <div className="absolute inset-[18%] rounded-xl border-2 border-dashed border-red-500/50" />
         </div>
       )
     case 'isla_pozo':
       return (
         <div className="pointer-events-none absolute inset-0">
           <div
-            className="absolute rounded border border-stone-500/60 bg-stone-700/35"
+            className="absolute rounded border border-slate-700/60 bg-slate-800/40"
             style={vertical ? { left: '34%', width: '32%', top: '12%', height: '76%' } : { top: '34%', height: '32%', left: '12%', width: '76%' }}
           />
         </div>
@@ -75,11 +78,11 @@ function Decoracion({ elemento }) {
         : [[22, 24], [22, 76], [78, 24], [78, 76]]
       return (
         <div className="pointer-events-none absolute inset-0">
-          {rieles('bg-indigo-700/35')}
+          {rieles('bg-slate-800/40')}
           {puntos.map(([izq, arr]) => (
             <div
               key={`${izq}-${arr}`}
-              className="absolute h-2.5 w-2.5 rounded-full bg-indigo-700/70"
+              className="absolute h-2.5 w-2.5 rounded-full bg-slate-900/70"
               style={{ left: `${izq}%`, top: `${arr}%`, transform: 'translate(-50%, -50%)' }}
             />
           ))}
@@ -90,38 +93,44 @@ function Decoracion({ elemento }) {
       return (
         <div className="pointer-events-none absolute inset-0">
           <div
-            className="absolute rounded-full border-[5px] border-orange-700/50"
+            className="absolute rounded-full border-[5px] border-red-700/45"
             style={{ ...centrada, width: lado * 0.5, height: lado * 0.5 }}
           />
-          <div className="absolute rounded-full bg-orange-700/40" style={{ ...centrada, width: lado * 0.14, height: lado * 0.14 }} />
+          <div className="absolute rounded-full bg-red-700/40" style={{ ...centrada, width: lado * 0.14, height: lado * 0.14 }} />
         </div>
       )
     case 'pulmon':
       return (
         <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: RAYADO }}>
-          <div className="absolute inset-1 rounded border border-dashed border-amber-600/60" />
+          <div className="absolute inset-1 rounded border border-dashed border-green-600/60" />
         </div>
       )
     case 'desabolladura_pintura':
       return (
         <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: RAYADO }}>
-          <div className="absolute inset-1.5 rounded border-2 border-rose-400/60" />
+          <div className="absolute inset-1.5 rounded border-2 border-red-400/60" />
         </div>
       )
     case 'lavado':
       return (
         <div className="pointer-events-none absolute inset-0">
           <div
-            className="absolute rounded-full border-2 border-dashed border-cyan-600/60"
+            className="absolute rounded-full border-2 border-dashed border-red-500/50"
             style={{ ...centrada, width: lado * 0.7, height: lado * 0.7 }}
           />
+        </div>
+      )
+    case 'recepcion_ingreso':
+      return (
+        <div className="pointer-events-none absolute inset-0">
+          <span className="absolute bottom-0 right-1 text-lg font-bold leading-none text-orange-500/50">P</span>
         </div>
       )
     case 'oficina':
       return (
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute bottom-2 right-2 h-3 w-10 rounded bg-emerald-700/30" />
-          <div className="absolute bottom-6 right-5 h-3 w-3 rounded-full bg-emerald-700/40" />
+          <div className="absolute bottom-2 right-2 h-3 w-10 rounded bg-slate-500/30" />
+          <div className="absolute bottom-6 right-5 h-3 w-3 rounded-full bg-slate-500/40" />
         </div>
       )
     default:
@@ -166,7 +175,13 @@ function FiguraPlano({
       className={`absolute select-none overflow-hidden rounded-md border-2 outline-none ${config.clases} ${anillo} ${
         editando ? 'cursor-move touch-none' : 'cursor-pointer'
       } ${invalida ? 'opacity-70' : ''}`}
-      style={{ left: caja.x * CELDA, top: caja.y * CELDA, width: caja.ancho * CELDA, height: caja.alto * CELDA }}
+      style={{
+        left: caja.x * CELDA,
+        top: caja.y * CELDA,
+        width: caja.ancho * CELDA,
+        height: caja.alto * CELDA,
+        ...(elemento.rotacion ? { transform: `rotate(${elemento.rotacion}deg)` } : {}),
+      }}
     >
       <Decoracion elemento={{ ...elemento, ...caja }} />
 
@@ -195,7 +210,7 @@ function FiguraPlano({
         </div>
       )}
 
-      {editando && seleccionada && (
+      {editando && seleccionada && !elemento.rotacion && (
         <div
           data-manija="redimensionar"
           className="absolute bottom-0 right-0 h-3.5 w-3.5 cursor-nwse-resize rounded-tl bg-deep"
@@ -383,10 +398,10 @@ function Taller() {
     }
   }
 
-  async function cargarEjemplo() {
-    const filas = PLANO_EJEMPLO.map((item) => {
+  async function cargarPlanoBase() {
+    const filas = PLANO_DIDIAL.map((item) => {
       const config = TIPOS_PLANO[item.tipo]
-      const isla = buscarIslaPorNombre(tiposIsla, item.islaNombre ?? config.islaNombre)
+      const isla = buscarIslaPorNombre(tiposIsla, islaNombreDeItem(item))
       return {
         empresa_id: usuario.empresa_id,
         tipo: item.tipo,
@@ -395,6 +410,7 @@ function Taller() {
         y: item.y,
         ancho: item.ancho ?? config.ancho,
         alto: item.alto ?? config.alto,
+        rotacion: item.rotacion ?? 0,
         capacidad_vehiculos: config.capacidad ?? 1,
         tipo_isla_id: isla ? isla.id : null,
       }
@@ -588,6 +604,10 @@ function Taller() {
 
   const puestos = elementos.filter((elemento) => TIPOS_PLANO[elemento.tipo]?.esPuesto)
   const puestosOcupados = puestos.filter((elemento) => (ocupantesPorElemento.get(elemento.id) || []).length > 0).length
+  const porCategoria = contarPorCategoria(elementos)
+  const ocupadosPorCategoria = contarPorCategoria(
+    elementos.filter((elemento) => (ocupantesPorElemento.get(elemento.id) || []).length > 0)
+  )
 
   const fondoGrilla = editando
     ? {
@@ -604,7 +624,7 @@ function Taller() {
           <h1 className="text-xl font-semibold text-slate-900">Taller</h1>
           <p className="text-sm text-slate-500">
             {editando
-              ? 'Editando el plano: los cambios se guardan al soltar.'
+              ? 'Editando el plano: los cambios se guardan al soltar. Cada cuadro mide 1 m.'
               : `${actualizadoEn ? `Actualizado ${actualizadoEn.toLocaleTimeString('es-CL')}` : ''} · se refresca solo cada minuto`}
           </p>
         </div>
@@ -650,6 +670,25 @@ function Taller() {
         </div>
       )}
 
+      {!cargando && elementos.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+          {Object.entries(CATEGORIAS_PLANO).map(([clave, categoria]) => (
+            <span key={clave} className="flex items-center gap-2 text-slate-700">
+              <span className={`h-3 w-6 rounded-sm border-2 ${categoria.muestra}`} />
+              {categoria.etiqueta} ({porCategoria[clave]})
+              {!editando && (
+                <span className="text-xs text-slate-500">
+                  · {ocupadosPorCategoria[clave]} con vehículo
+                </span>
+              )}
+            </span>
+          ))}
+          <span className="ml-auto text-xs text-slate-500">
+            {COLUMNAS} m x {FILAS} m · {(COLUMNAS * FILAS).toLocaleString('es-CL')} m²
+          </span>
+        </div>
+      )}
+
       {cargando ? (
         <p className="text-slate-500">Cargando el plano…</p>
       ) : (
@@ -675,7 +714,7 @@ function Taller() {
                     {puedeEditar ? (
                       <>
                         <p className="mt-1 text-sm text-slate-500">
-                          Agrega figuras desde la barra superior en modo edición, o parte de un plano de ejemplo.
+                          Agrega figuras desde la barra superior en modo edición, o parte del plano base del taller (33 m x 65 m).
                         </p>
                         <div className="mt-3 flex justify-center gap-2">
                           {!editando && (
@@ -683,8 +722,8 @@ function Taller() {
                               Editar plano
                             </button>
                           )}
-                          <button type="button" className="btn-primary" disabled={ocupado} onClick={cargarEjemplo}>
-                            Cargar plano de ejemplo
+                          <button type="button" className="btn-primary" disabled={ocupado} onClick={cargarPlanoBase}>
+                            Cargar plano base del taller
                           </button>
                         </div>
                       </>
@@ -848,6 +887,14 @@ function PanelElemento({
             <CampoNumero etiqueta="Fila" valor={elemento.y} minimo={0} onConfirmar={(v) => onCambiarCaja('y', v)} />
             <CampoNumero etiqueta="Ancho (celdas)" valor={elemento.ancho} minimo={1} onConfirmar={(v) => onCambiarCaja('ancho', v)} />
             <CampoNumero etiqueta="Alto (celdas)" valor={elemento.alto} minimo={1} onConfirmar={(v) => onCambiarCaja('alto', v)} />
+            <CampoNumero
+              etiqueta="Rotación (grados)"
+              valor={elemento.rotacion || 0}
+              minimo={0}
+              onConfirmar={(v) => {
+                if (v >= 0 && v <= 359) onGuardar({ rotacion: v })
+              }}
+            />
           </div>
 
           {esPuesto && (

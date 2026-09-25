@@ -1,5 +1,17 @@
 # Registro de cambios
 
+## 2026-09-25 — Plano del taller con el layout real de Didial (`0045_plano_layout_didial.sql`)
+
+**Qué se entrega:** el panel Taller muestra el layout real del taller (33 m x 65 m, 2.145 m2) a partir de la imagen del cliente, con su leyenda: 15 puestos productivos (rojo), 15 puestos de pulmón (verde) y 2 de recepción/ingreso (naranjo).
+
+- **Lienzo a escala real:** 1 cuadro = 1 m (`CELDA` 24 px, `COLUMNAS` 33, `FILAS` 65). Los colores siguen la leyenda por categoría; los elevadores llevan borde segmentado y la alineadora borde negro, como en el dibujo.
+- **Giro libre:** `plano_elementos.rotacion` (grados) y campo "Rotación (grados)" en el editor; las dos islas de servicio rápido con pozo van en diagonal (30 grados). "Girar 90" sigue intercambiando ancho y alto. Una figura girada libremente no muestra la manija de tamaño (se cambia desde el panel).
+- **Nuevo tipo `recepcion_ingreso`** (estacionamientos de ingreso; puesto para ubicar vehículos). "Oficina" pasa a llamarse "Oficina o sala" y se dibuja en gris; el pulmón ahora es un espacio de 1 vehículo (antes 4).
+- **Leyenda en vivo** sobre el plano: cantidad de cada categoría y, en modo en vivo, cuántos tienen vehículo.
+- **Plano base** (`PLANO_DIDIAL` en `lib/plano.js`, 41 figuras): el botón "Cargar plano base del taller" (plano vacío) lo inserta tal cual. Las 7 islas comunes se llaman Puesto 1 a 7; las salas grises se llaman Sala/Oficina N a la espera de sus nombres reales.
+- **La Agenda no cambia:** solo 3 elevadores y el Puesto 1 llevan tipo "Taller mecánico" (capacidad 4), más 2 servicio rápido, 1 alineación, 1 pintura y 1 lavado. Los Puestos 2 a 7 quedan sin tipo de isla y se activan desde el editor cuando haya técnicos para ellos.
+- **Migración 0045:** columna `rotacion`, tipo `recepcion_ingreso` en el CHECK y reemplazo del plano del tenant demo (conserva técnicos y vuelve a ubicar las 10 OT). El tenant real no se toca: se carga desde la app.
+
 ## 2026-09-25 — Reagendar desde la Agenda, mes solo con patentes, vista de año y zoom entre vistas
 
 **Qué se entrega:** tres pedidos sobre la Agenda con vistas. Sin migraciones ni funciones nuevas: solo frontend.
