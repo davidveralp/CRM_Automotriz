@@ -179,9 +179,7 @@ function Menu() {
     <nav className="carbon-sidebar flex w-64 shrink-0 flex-col text-white print:hidden">
       <div className="flex items-center gap-3 border-b border-white/10 px-5 py-5">
         {usuario?.empresas?.logo_url ? (
-          <div className="grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-white">
-            <img src={usuario.empresas.logo_url} alt={usuario.empresas.nombre} className="h-full w-full object-contain" />
-          </div>
+          <img src={usuario.empresas.logo_url} alt={usuario.empresas.nombre} className="h-11 w-11 shrink-0 object-contain" />
         ) : (
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-didial-red font-bold text-white">
             {(usuario?.empresas?.nombre || 'D').slice(0, 1).toUpperCase()}
