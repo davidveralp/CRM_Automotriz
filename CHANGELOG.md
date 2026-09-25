@@ -1,5 +1,9 @@
 # Registro de cambios
 
+## 2026-09-25 — El logo del panel es siempre el del favicon
+
+**Qué se corrige:** el menú lateral tomaba el logo de `empresas.logo_url`, que en el tenant real trae el logo con el nombre en vez del ícono. Ahora el panel carga siempre `/logo-didial.png`, el mismo archivo que usa el favicon (`index.html`), sin fondo blanco y sin depender de ese campo. Verificado en el navegador: la ruta de la imagen del panel es idéntica a la del favicon (1254 px, carga correcta). Los documentos impresos siguen usando `empresas.logo_url` en su encabezado; no se tocaron.
+
 ## 2026-09-25 — Barra superior, buscador global, modo nocturno y menú lateral contraíble (`0042_perfil_propio.sql`)
 
 **Qué se entrega:** barra superior en todas las pantallas del panel y un menú lateral que se contrae a solo íconos.

@@ -207,13 +207,11 @@ function Menu() {
       className={`carbon-sidebar sticky top-0 flex h-screen shrink-0 flex-col self-start text-white transition-[width] duration-200 print:hidden ${contraido ? 'w-[76px]' : 'w-64'}`}
     >
       <div className={`flex items-center border-b border-white/10 py-5 ${contraido ? 'justify-center px-2' : 'gap-3 px-5'}`}>
-        {usuario?.empresas?.logo_url ? (
-          <img src={usuario.empresas.logo_url} alt={usuario.empresas.nombre} className="h-11 w-11 shrink-0 object-contain" />
-        ) : (
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-didial-red font-bold text-white">
-            {(usuario?.empresas?.nombre || 'D').slice(0, 1).toUpperCase()}
-          </div>
-        )}
+        {/* El logo del panel es SIEMPRE el mismo archivo del favicon (index.html),
+            no empresas.logo_url: ese campo puede traer otro diseño (por ejemplo el
+            logo con el nombre) y el panel debe mostrar el ícono de la marca. */}
+        <img src="/logo-didial.png" alt={usuario?.empresas?.nombre || 'Didial'} className="h-11 w-11 shrink-0 object-contain" />
+
         {!contraido && (
           <div className="min-w-0">
             <div className="truncate text-base font-bold leading-none tracking-tight">{usuario?.empresas?.nombre || 'CRM'}</div>
