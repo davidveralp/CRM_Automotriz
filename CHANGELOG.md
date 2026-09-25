@@ -1,5 +1,29 @@
 # Registro de cambios
 
+## 2026-09-25 — Reagendar desde la Agenda, mes solo con patentes, vista de año y zoom entre vistas
+
+**Qué se entrega:** tres pedidos sobre la Agenda con vistas. Sin migraciones ni funciones nuevas: solo frontend.
+
+- **Reagendar (cambiar día y/u hora):** dentro del detalle de una cita (el recuadro que se despliega al pincharla, en las vistas de día y semana) hay un botón "Reagendar (cambiar día u hora)" que abre un mini formulario con el día y la hora actuales ya cargados. Solo las citas agendadas o confirmadas se pueden mover. Reglas (`validarReagendamiento` en `src/lib/agenda.js`, probadas): no permite días pasados ni horas que ya pasaron hoy, ni el mismo día y hora; respeta el horario de atención de cada día (incluida la salida temprana de viernes y sábado), el corte de mediodía (solo la isla que opera en el corte) y el cupo por bloque de 30 minutos, contando las demás citas de esa isla ese día (las canceladas no ocupan y la propia cita no se cuenta contra su lugar nuevo). Si algo no se puede, el formulario explica por qué en el mismo lugar. Al guardar aparece un aviso "quedó reagendada para el jueves, 01-10 a las 11:00" con enlace "Ver ese día". El cambio marca la cita como pendiente (trigger de `0044`) y la tarjeta de ClickUp se actualiza sola (verificado: `actualizadas: 1`).
+- **Mes: solo la patente.** Cada día del mes muestra la patente de sus citas como pequeñas etiquetas (hasta 6 y "+N"); hora, modelo, nombre y motivo quedan en el tooltip y en las vistas de semana y día.
+- **Vista de año** (`VistaAnio.jsx`, botón "Año"): doce meses pequeños con cada día coloreado por ocupación (verde, ámbar, rojo) y el conteo de citas por mes; pinchar un mes abre el mes y pinchar un día abre el día. Solo trae lo justo para colorear (sin embeds) y pide por páginas de 1000 filas, porque un año de un taller real puede pasar el tope de la API.
+- **Acercamiento y alejamiento al cambiar de vista:** año, mes, semana y día son cuatro niveles (`NIVEL_DE_VISTA`); ir hacia el día anima un acercamiento y hacia el año un alejamiento (escala y desvanecido de 320 ms). Al pinchar un día o un mes, el acercamiento parte desde el punto donde se hizo clic. Respeta "reducir movimiento" del sistema (sin animación). Verificado la dirección de la animación en las cinco transiciones.
+- **Verificado en la demo de punta a punta:** creé una cita, la reagendé (el domingo y las 18:30 fueron rechazados con su motivo; 01-10 a las 11:00 se guardó), confirmé la actualización en ClickUp y la cancelé (`retiradas: 1`): sin datos de prueba a medias.
+
+## 2026-09-25 — Agenda con vistas de día, semana y mes
+
+**Qué se entrega:** la Agenda tiene tres vistas para elegir el mejor momento de atender a un cliente, y las citas muestran patente, modelo y nombre en vez de solo una fracción de cupo. Sin migraciones: solo frontend.
+
+- **Selector Día / Semana / Mes** (se recuerda la vista elegida en el navegador), botones anterior/siguiente/Hoy que avanzan según la vista y selector de fecha.
+- **Tarjeta de cita** (`components/agenda/TarjetaCita.jsx`): a la vista, `PR UE 01 · Toyota Yaris`, el nombre de la persona, la hora y la isla, con color por estado. **Al pincharla se amplía** y muestra el motivo/observaciones de la cita, el servicio del catálogo, el horario con hora de término, la isla, el cliente con teléfono (enlace `tel:`), el vehículo, las marcas "por WhatsApp" y "en ClickUp", el enlace a la OT si ya nació y un selector para cambiar el estado. Accesible: botón con `aria-expanded`.
+- **Día:** la cuadrícula por isla y bloque de 30 minutos de siempre, ahora con las tarjetas en vez de solo el nombre, "N/capacidad · X libres" en cada bloque y la tabla de detalle debajo (su columna pasa a llamarse "Motivo / observaciones").
+- **Semana** (`VistaSemana.jsx`): una columna por día con sus tarjetas y una barra de ocupación; arriba, las 3 franjas con más disponibilidad de lo que queda de la semana; abajo, un **mapa de disponibilidad** por bloque de 30 minutos (puestos libres sobre el total de todas las islas, con el corte de mediodía descontado) con colores verde/ámbar/rojo. Pinchar un día o un horario abre ese día. Los días en que el taller no atiende (domingo) solo aparecen si tienen citas.
+- **Mes** (`VistaMes.jsx`): calendario de lunes a domingo con, por día, el conteo de citas, la barra de ocupación y las primeras 3 citas (hora, patente y nombre) con "+N más"; pinchar un día abre su detalle.
+- **Lógica pura y probada** (`src/lib/agenda.js`): semana desde el lunes, grilla del mes, cambio de horario de septiembre, ocupación por solapamiento (las citas canceladas no ocupan cupo; el corte de mediodía solo cuenta las islas que siguen operando) y "mejores momentos". Se movió ahí lo que antes estaba dentro de `Agenda.jsx`.
+- **Bug corregido de paso:** el "hoy" de la Agenda usaba `toISOString()` (UTC): pasadas las 21:00 en Chile abría el día siguiente. Ahora usa la fecha local.
+- **Carga por rango:** la consulta pide las citas de un día, una semana o la grilla del mes (`gte`/`lte` sobre `fecha`) e incluye el servicio del catálogo. La sincronización de citas con ClickUp sigue funcionando en las tres vistas.
+- **Verificado en el navegador** con la cuenta demo: las tres vistas, expandir y colapsar, pinchar una celda del mapa o del mes abre el día, navegación entre semanas y meses, la vista se recuerda, sin desborde de página en pantalla angosta. Modo nocturno con los colores nuevos mapeados.
+
 ## 2026-09-25 — Las citas agendadas van a ClickUp, en el estado "agenda" (`0044_clickup_citas.sql`)
 
 **Qué se entrega:** toda cita agendada (a mano en la Agenda o por el bot de WhatsApp; en la cuenta real y en la demo) crea su tarjeta en ClickUp, en el estado "agenda", en la lista de su empresa. Cuando el vehículo llega y se crea la OT desde esa cita, la OT adopta la misma tarjeta.
