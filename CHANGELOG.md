@@ -1,5 +1,13 @@
 # Registro de cambios
 
+## 2026-09-26 — Técnicos reales en la demo (`0050_demo_tecnicos_reales.sql`)
+
+**Qué se entrega:** el equipo técnico de la demo usa los mismos nombres y funciones que el de Didial.
+
+- Felipe Codoceo, Ignacio Heredia y Shelmy Belyzer (mecánicos master), Gabriel Cayo (lavador y servicios rápidos), Wilson Araya (detailer y pintura) y Pablo Donoso (alineador y lavador). Las cuentas "Tomás Técnico" y "Daniela Detailer" pasan a ser Felipe y Wilson con los mismos correos; se crean cuatro usuarios más (`demo-mecanico2@`, `demo-mecanico3@`, `demo-lavador@`, `demo-alineador@`, todos `@example.com`) con `scripts/crear-demo.mjs` (ahora 12 cuentas).
+- Cada persona del equipo de la Agenda (`personal_taller`) queda ligada a su usuario; cada puesto del plano queda a cargo del técnico de su función; las tareas de las OT activas pasan al técnico del puesto donde está el vehículo. Las OT entregadas están bloqueadas y conservan su técnico anterior (Felipe y Wilson).
+- Verificado por SQL: 6 técnicos, 6 del equipo ligados y los puestos a cargo esperados (Puesto 1 sigue a cargo del jefe de taller de la demo).
+
 ## 2026-09-25 — Sincronización completa de la demo con ClickUp (`0049_demo_estados_clickup.sql`)
 
 **Qué se entrega:** una herramienta para reflejar en la lista demo de ClickUp todo lo vigente del ambiente de prueba. Sin migraciones; se despliega `clickup-sincronizar`.

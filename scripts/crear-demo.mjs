@@ -1,4 +1,4 @@
-// Script de un solo uso: crea las 8 cuentas de autenticación del tenant demo
+// Script de un solo uso: crea las 12 cuentas de autenticación del tenant demo
 // (una por rol, ver 0036_tenant_demo.sql) y sube el logo
 // al bucket público logos-empresa, en la ruta que esa migración espera
 // -determinística a propósito, para no tener que capturar la salida del
@@ -38,6 +38,11 @@ const USUARIOS_DEMO = [
   { id: 'a0000000-0000-4000-8000-000000000006', correo: 'demo-tecnico@example.com', rol: 'tecnico' },
   { id: 'a0000000-0000-4000-8000-000000000007', correo: 'demo-detailer@example.com', rol: 'detailer' },
   { id: 'a0000000-0000-4000-8000-000000000008', correo: 'demo-recepcionista@example.com', rol: 'recepcionista' },
+  // Resto del equipo técnico (ver 0050_demo_tecnicos_reales.sql).
+  { id: 'a0000000-0000-4000-8000-000000000009', correo: 'demo-mecanico2@example.com', rol: 'tecnico' },
+  { id: 'a0000000-0000-4000-8000-00000000000a', correo: 'demo-mecanico3@example.com', rol: 'tecnico' },
+  { id: 'a0000000-0000-4000-8000-00000000000b', correo: 'demo-lavador@example.com', rol: 'tecnico' },
+  { id: 'a0000000-0000-4000-8000-00000000000c', correo: 'demo-alineador@example.com', rol: 'tecnico' },
 ]
 
 async function crearUsuarios() {
