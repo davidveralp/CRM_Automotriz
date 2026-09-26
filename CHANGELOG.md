@@ -1,5 +1,11 @@
 # Registro de cambios
 
+## 2026-09-26 — Pantalla de inicio: "Sistema de gestión integral" y líneas con ondas (solo frontend)
+
+- **Texto:** bajo "Gestión del taller" ahora dice "Sistema de gestión integral" (antes "CRM de recepción, ventas y postventa.").
+- **Ondas:** las dos líneas del fondo (la amarilla gruesa y la roja fina) ondulan de forma continua, sutil y lenta: ondas bajas (unas 5 y 4 unidades sobre 300 de alto), la amarilla con un ciclo de 18 s y la roja de 26 s, en sentido contrario y con distinta longitud de onda, para que no se muevan al unísono. Cada línea es la curva original más una onda senoidal cuya fase avanza (`lib/ondas.js`), animada con SMIL en el atributo `d`. Quien tiene activada la preferencia del sistema "reducir movimiento" ve las líneas quietas.
+- Verificado en una página de prueba con el mismo código (la pantalla real redirige mientras hay sesión abierta): el reloj de la animación avanza y la forma de la línea cambia. La pantalla real no se vio en el navegador.
+
 ## 2026-09-26 — Trabajo y valorización de la OT en pestañas por rubro (solo frontend)
 
 **Qué se entrega:** en el detalle de la OT, las cuatro secciones que estaban separadas (agregar servicio del catálogo, "Mano de obra", "Repuestos, insumos y servicios externos" y "Valorización y negociación") pasan a un solo panel, **Trabajo y valorización**, con pestañas **Mano de obra**, **Repuestos**, **Lubricantes e insumos** y **Servicios externos** (el mismo orden de la orden de egreso).

@@ -2,6 +2,15 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
+import { CURVA_AMARILLA, CURVA_ROJA, fotogramasOnda, trazoOnda } from '../lib/ondas'
+
+// Quien pide menos movimiento en su sistema ve las líneas quietas.
+const REDUCIR_MOVIMIENTO = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+// Ondas bajas y lentas: el movimiento debe ser sutil, no llamar la atención sobre el formulario.
+const AMPLITUD_AMARILLA = 5
+const AMPLITUD_ROJA = 4
+const ONDA_AMARILLA = fotogramasOnda(CURVA_AMARILLA, AMPLITUD_AMARILLA, 1.5, 1)
+const ONDA_ROJA = fotogramasOnda(CURVA_ROJA, AMPLITUD_ROJA, 1.2, -1)
 
 function Login() {
   const { sesion, cargando } = useAuth()
@@ -52,21 +61,27 @@ function Login() {
           fill="none"
         >
           <path
-            d="M-50 220 C 250 120, 520 90, 860 30"
+            d={trazoOnda(CURVA_AMARILLA, AMPLITUD_AMARILLA, 1.5, 0)}
             stroke="#F9C847"
             strokeWidth="14"
             strokeLinecap="round"
+            strokeLinejoin="round"
             fill="none"
             opacity="0.85"
-          />
+          >
+            {!REDUCIR_MOVIMIENTO && <animate attributeName="d" dur="18s" repeatCount="indefinite" values={ONDA_AMARILLA} />}
+          </path>
           <path
-            d="M-50 250 C 280 170, 560 150, 880 100"
+            d={trazoOnda(CURVA_ROJA, AMPLITUD_ROJA, 1.2, 0)}
             stroke="#E73C32"
             strokeWidth="6"
             strokeLinecap="round"
+            strokeLinejoin="round"
             fill="none"
             opacity="0.6"
-          />
+          >
+            {!REDUCIR_MOVIMIENTO && <animate attributeName="d" dur="26s" repeatCount="indefinite" values={ONDA_ROJA} />}
+          </path>
         </svg>
 
         <div className="relative z-10 max-w-md text-center lg:text-left">
@@ -76,7 +91,7 @@ function Login() {
           <h1 className="mt-8 text-3xl font-bold leading-tight text-white lg:text-4xl">
             Gestión <span className="text-didial-amber">del taller</span>
           </h1>
-          <p className="mt-3 text-base text-slate-300 lg:text-lg">CRM de recepción, ventas y postventa.</p>
+          <p className="mt-3 text-base text-slate-300 lg:text-lg">Sistema de gestión integral</p>
           <div className="mt-6 flex items-center justify-center gap-2 lg:justify-start">
             <span className="h-1 w-10 rounded-full bg-didial-red" />
             <span className="h-1 w-6 rounded-full bg-didial-amber" />
