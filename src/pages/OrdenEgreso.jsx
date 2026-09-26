@@ -238,7 +238,7 @@ function OrdenEgreso() {
               descuento > 0
                 ? [
                     { etiqueta: 'SUBTOTAL', valor: formatoNumero(totalBruto) },
-                    { etiqueta: `Desc. mano de obra (${textoPorcentaje(porcentaje)}%)`, valor: `-${formatoNumero(descuento)}` },
+                    { etiqueta: `Desc. M.O. (${textoPorcentaje(porcentaje)}%)`, valor: `-${formatoNumero(descuento)}` },
                     { etiqueta: 'TOTAL', valor: formatoNumero(total), destacado: true },
                   ]
                 : [{ etiqueta: 'TOTAL', valor: formatoNumero(total), destacado: true }]

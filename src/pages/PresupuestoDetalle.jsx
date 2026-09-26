@@ -383,7 +383,7 @@ function PresupuestoDetalle() {
               ...(descuento > 0
                 ? [
                     { etiqueta: 'SUBTOTAL', valor: formatoNumero(totalBruto) },
-                    { etiqueta: `Desc. mano de obra (${textoPorcentaje(porcentaje)}%)`, valor: `-${formatoNumero(descuento)}` },
+                    { etiqueta: `Desc. M.O. (${textoPorcentaje(porcentaje)}%)`, valor: `-${formatoNumero(descuento)}` },
                   ]
                 : []),
               { etiqueta: 'NETO', valor: formatoNumero(neto) },
