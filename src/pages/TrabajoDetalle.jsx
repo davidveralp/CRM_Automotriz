@@ -7,13 +7,16 @@ import FirmaCanvas from '../components/FirmaCanvas'
 
 import DescuentoManoObra from '../components/DescuentoManoObra'
 import { formatearPatente } from '../lib/patente'
-import { calcularDescuentoManoObra } from '../lib/descuento'
+import { calcularDescuentoManoObra, textoPorcentaje } from '../lib/descuento'
 const ETIQUETA_AREA = {
   mano_obra: 'Mano de obra',
   repuestos: 'Repuestos',
   lubricantes_insumos: 'Lubricantes e insumos',
   servicios_externos: 'Servicios externos',
 }
+
+// Rubros de la OT, en el orden en que se muestran y se imprimen.
+const PESTANAS_OT = ['mano_obra', 'repuestos', 'lubricantes_insumos', 'servicios_externos']
 
 const ROLES_CON_ACCESO_MONTOS = ['socia', 'admin', 'encargado_presupuestos', 'jefe_taller']
 
@@ -87,6 +90,7 @@ function TrabajoDetalle() {
   const [agregandoServicioCatalogo, setAgregandoServicioCatalogo] = useState(false)
 
   const [areaDetalle, setAreaDetalle] = useState('repuestos')
+  const [pestana, setPestana] = useState('mano_obra')
   const [detalleTexto, setDetalleTexto] = useState('')
   const [cantidadDetalle, setCantidadDetalle] = useState('1')
   const [productoDetalle, setProductoDetalle] = useState('')
@@ -138,7 +142,7 @@ function TrabajoDetalle() {
         // NULL solos si el usuario no tiene tiene_acceso_montos().
         supabase
           .from('ot_detalle_con_permiso')
-          .select('id, area, detalle, cantidad, costo_unitario, precio_unitario, total_linea, verificado, decision, motivo_rechazo, fecha_postergado, presupuesto_id, hallazgo_precio_referencial, producto_id, producto_nombre, producto_stock_actual, producto_unidad_medida, provisto_por_cliente')
+          .select('id, area, tarea_taller_id, detalle, cantidad, costo_unitario, precio_unitario, total_linea, verificado, decision, motivo_rechazo, fecha_postergado, presupuesto_id, hallazgo_precio_referencial, producto_id, producto_nombre, producto_stock_actual, producto_unidad_medida, provisto_por_cliente')
           .eq('trabajo_id', id)
           .order('creado_en'),
         supabase.from('presupuestos_taller').select('id, correlativo, estado, creado_en').eq('trabajo_id', id).order('creado_en', { ascending: false }),
@@ -506,6 +510,18 @@ function TrabajoDetalle() {
   if (!trabajo) return <div className="p-6 text-slate-500">No se encontró el trabajo.</div>
 
   const bloqueada = !!trabajo.bloqueada_en
+  const esManoObra = pestana === 'mano_obra'
+  const itemsPestana = detalle.filter((item) => item.area === pestana)
+  const totalesOt = calcularDescuentoManoObra(
+    detalle.filter((item) => item.decision === 'aceptado'),
+    trabajo.descuento_mano_obra_pct
+  )
+
+  // Al cambiar de pestaña, el formulario de ítems queda apuntando a ese rubro.
+  function elegirPestana(clave) {
+    setPestana(clave)
+    if (clave !== 'mano_obra') setAreaDetalle(clave)
+  }
   const reabierta = trabajo.estado === 'entregado' && !bloqueada
 
   // Agrupa el catálogo por segmento (isla) -> categoría, para las dos
@@ -611,249 +627,9 @@ function TrabajoDetalle() {
         </div>
       )}
 
-      {!bloqueada && catalogoServicios.length > 0 && (
-        <section className="mb-6 max-w-4xl rounded border border-slate-200 bg-white p-4">
-          <h2 className="mb-1 text-lg font-semibold text-slate-900">Agregar servicio del catálogo</h2>
-          <p className="mb-3 text-xs text-slate-500">
-            Precio de mano de obra calculado para {ETIQUETA_CARROCERIA[vehiculoCatalogo?.tipo_carroceria] || 'este vehículo'} ·{' '}
-            {vehiculoCatalogo?.tipo_combustible === 'diesel' ? 'Diésel' : 'Bencina'}. Al elegir un servicio se agrega la tarea
-            de mano de obra con su precio, y los repuestos típicos como ítems pendientes de presupuesto -editables o
-            eliminables-.
-          </p>
-          <form onSubmit={agregarServicioCatalogo} className="grid grid-cols-1 gap-2 sm:grid-cols-4">
-            <select
-              value={categoriaCatalogo}
-              onChange={(evento) => {
-                setCategoriaCatalogo(evento.target.value)
-                setServicioCatalogo('')
-              }}
-              className="rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option value="">Categoría…</option>
-              {[...categoriasPorSegmento.entries()].map(([segmento, categorias]) => (
-                <optgroup key={segmento} label={segmento}>
-                  {[...categorias].sort().map((categoria) => (
-                    <option key={categoria} value={categoria}>
-                      {categoria}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            <select
-              value={servicioCatalogo}
-              onChange={(evento) => setServicioCatalogo(evento.target.value)}
-              disabled={!categoriaCatalogo}
-              className="rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-            >
-              <option value="">Servicio…</option>
-              {serviciosDeCategoria.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.servicio}
-                </option>
-              ))}
-            </select>
-            <select
-              value={tecnicoCatalogo}
-              onChange={(evento) => setTecnicoCatalogo(evento.target.value)}
-              className="rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option value="">Sin asignar todavía</option>
-              {tecnicos.map((tecnico) => (
-                <option key={tecnico.id} value={tecnico.id}>
-                  {tecnico.nombre_completo}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              disabled={!servicioCatalogo || agregandoServicioCatalogo}
-              className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-            >
-              {agregandoServicioCatalogo ? 'Agregando…' : 'Agregar servicio'}
-            </button>
-          </form>
-        </section>
-      )}
-
-      <div className="grid max-w-4xl grid-cols-1 gap-6 md:grid-cols-2">
-        <section>
-          <h2 className="mb-2 text-lg font-semibold text-slate-900">Mano de obra</h2>
-          <ul className="mb-3 divide-y divide-slate-100 rounded border border-slate-200 bg-white">
-            {tareas.map((tarea) => (
-              <li key={tarea.id} className="px-3 py-2 text-sm">
-                <p className="text-slate-800">{tarea.descripcion}</p>
-                <p className="text-xs text-slate-500">
-                  {tarea.usuarios?.nombre_completo || tarea.clickup_asignado_nombre || 'Sin asignar'} · {tarea.estado}
-                </p>
-              </li>
-            ))}
-            {tareas.length === 0 && <li className="px-3 py-3 text-sm text-slate-400">Sin tareas todavía.</li>}
-          </ul>
-          {bloqueada ? (
-            <p className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-400">
-              OT cerrada, no se pueden agregar tareas.
-            </p>
-          ) : (
-            <form onSubmit={agregarTarea} className="rounded border border-slate-200 bg-white p-3">
-              <input
-                required
-                value={descripcionTarea}
-                onChange={(evento) => setDescripcionTarea(evento.target.value)}
-                placeholder="Ej. Cambio de pastillas de freno delanteras"
-                className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              />
-              <select
-                value={tecnicoTarea}
-                onChange={(evento) => setTecnicoTarea(evento.target.value)}
-                className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              >
-                <option value="">Sin asignar todavía</option>
-                {tecnicos.map((tecnico) => (
-                  <option key={tecnico.id} value={tecnico.id}>
-                    {tecnico.nombre_completo}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="submit"
-                disabled={guardandoTarea}
-                className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-              >
-                Agregar tarea
-              </button>
-            </form>
-          )}
-        </section>
-
-        <section>
-          <h2 className="mb-2 text-lg font-semibold text-slate-900">Repuestos, insumos y servicios externos</h2>
-          <ul className="mb-3 divide-y divide-slate-100 rounded border border-slate-200 bg-white">
-            {detalle
-              .filter((item) => item.area !== 'mano_obra')
-              .map((item) => (
-                <li key={item.id} className="px-3 py-2 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-800">
-                      {item.detalle} <span className="text-slate-400">× {item.cantidad}</span>
-                    </span>
-                    <label className="flex items-center gap-1 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={item.verificado}
-                        disabled={bloqueada}
-                        onChange={() => alternarVerificado(item)}
-                      />
-                      <span className={item.verificado ? 'text-green-600' : 'text-slate-400'}>
-                        {item.verificado ? 'Verificado' : ETIQUETA_AREA[item.area]}
-                      </span>
-                    </label>
-                  </div>
-                  {item.producto_nombre && (
-                    <p className="mt-0.5 text-xs text-slate-400">
-                      Bodega: {item.producto_nombre} (stock {item.producto_stock_actual} {item.producto_unidad_medida})
-                    </p>
-                  )}
-                  {item.provisto_por_cliente && (
-                    <p className="mt-0.5 text-xs font-medium text-amber-700">Cliente lo trae · no se valoriza</p>
-                  )}
-                </li>
-              ))}
-            {detalle.filter((item) => item.area !== 'mano_obra').length === 0 && (
-              <li className="px-3 py-3 text-sm text-slate-400">Sin ítems todavía.</li>
-            )}
-          </ul>
-          {bloqueada ? (
-            <p className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-400">
-              OT cerrada, no se pueden agregar ítems.
-            </p>
-          ) : (
-            <form onSubmit={agregarDetalle} className="rounded border border-slate-200 bg-white p-3">
-              <select
-                value={areaDetalle}
-                onChange={(evento) => setAreaDetalle(evento.target.value)}
-                className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              >
-                {Object.entries(ETIQUETA_AREA)
-                  .filter(([valor]) => valor !== 'mano_obra')
-                  .map(([valor, etiqueta]) => (
-                    <option key={valor} value={valor}>
-                      {etiqueta}
-                    </option>
-                  ))}
-              </select>
-              {(areaDetalle === 'repuestos' || areaDetalle === 'lubricantes_insumos') && (
-                <>
-                  {!provistoPorCliente && productos.length > 0 && (
-                    <select
-                      value={productoDetalle}
-                      onChange={(evento) => setProductoDetalle(evento.target.value)}
-                      className="mb-2 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                    >
-                      <option value="">Sin vincular a bodega</option>
-                      {productos.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.nombre} (stock {p.stock_actual} {p.unidad_medida})
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <label className="mb-2 flex items-center gap-2 text-xs text-slate-600">
-                    <input
-                      type="checkbox"
-                      checked={provistoPorCliente}
-                      onChange={(evento) => {
-                        setProvistoPorCliente(evento.target.checked)
-                        if (evento.target.checked) setProductoDetalle('')
-                      }}
-                    />
-                    El cliente trae este repuesto (no se valoriza)
-                  </label>
-                </>
-              )}
-              <div className="mb-2 flex gap-2">
-                <input
-                  required
-                  value={detalleTexto}
-                  onChange={(evento) => setDetalleTexto(evento.target.value)}
-                  placeholder="Ej. Filtro de aceite"
-                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                />
-                <input
-                  type="number"
-                  min="1"
-                  value={cantidadDetalle}
-                  onChange={(evento) => setCantidadDetalle(evento.target.value)}
-                  className="w-20 rounded border border-slate-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={guardandoDetalle}
-                className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-              >
-                Agregar ítem
-              </button>
-            </form>
-          )}
-        </section>
-      </div>
-
-      {tieneAccesoPrecioVenta && (
-        <DescuentoManoObra
-          trabajoId={id}
-          empresaId={usuario.empresa_id}
-          porcentajeVigente={trabajo.descuento_mano_obra_pct}
-          subtotalManoObra={calcularDescuentoManoObra(detalle.filter((item) => item.decision === 'aceptado'), 0).subtotalManoObra}
-          bloqueada={bloqueada}
-          rol={usuario?.rol}
-          onCambio={cargarTodo}
-        />
-      )}
-
-      <section className="mt-8 max-w-4xl">
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Valorización y negociación</h2>
+      <section className="max-w-5xl">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-slate-900">Trabajo y valorización</h2>
           {tieneAccesoMontos && !bloqueada && (
             <button
               type="button"
@@ -867,7 +643,7 @@ function TrabajoDetalle() {
         </div>
 
         {presupuestos.length > 0 && (
-          <div className="mb-2 space-y-1 text-sm text-slate-500">
+          <div className="mb-3 space-y-1 text-sm text-slate-500">
             {presupuestos.map((p) => {
               const totalPresupuesto = calcularDescuentoManoObra(
                 detalle.filter((item) => item.presupuesto_id === p.id),
@@ -900,111 +676,342 @@ function TrabajoDetalle() {
           </div>
         )}
 
-        <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500">
-              <tr>
-                <th className="px-3 py-2">Área</th>
-                <th className="px-3 py-2">Detalle</th>
-                <th className="px-3 py-2">Cant.</th>
-                {tieneAccesoMontos && <th className="px-3 py-2">Costo</th>}
-                {tieneAccesoPrecioVenta && <th className="px-3 py-2">Precio</th>}
-                {tieneAccesoPrecioVenta && <th className="px-3 py-2">Total</th>}
-                <th className="px-3 py-2">Decisión</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detalle.map((item) => (
-                <tr key={item.id} className="border-t border-slate-100 align-top">
-                  <td className="px-3 py-2 text-slate-500">{ETIQUETA_AREA[item.area]}</td>
-                  <td className="px-3 py-2 text-slate-800">{item.detalle}</td>
-                  <td className="px-3 py-2 text-slate-600">{item.cantidad}</td>
-                  {(tieneAccesoMontos || tieneAccesoPrecioVenta) &&
-                    (item.provisto_por_cliente ? (
-                      <td className="px-3 py-2 text-xs font-medium text-amber-700" colSpan={columnasMontos}>
-                        Cliente lo trae · no se valoriza
+        <div role="tablist" aria-label="Rubros de la OT" className="flex flex-wrap gap-1 border-b border-slate-200">
+          {PESTANAS_OT.map((clave) => {
+            const activa = pestana === clave
+            const itemsRubro = detalle.filter((item) => item.area === clave)
+            const subtotalRubro = calcularDescuentoManoObra(
+              itemsRubro.filter((item) => item.decision === 'aceptado'),
+              0
+            ).totalBruto
+            return (
+              <button
+                key={clave}
+                type="button"
+                role="tab"
+                aria-selected={activa}
+                onClick={() => elegirPestana(clave)}
+                className={`-mb-px rounded-t border px-3 py-2 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-deep ${
+                  activa ? 'border-slate-200 border-b-white bg-white text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                {ETIQUETA_AREA[clave]}
+                <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">{itemsRubro.length}</span>
+                {tieneAccesoPrecioVenta && subtotalRubro > 0 && <span className="ml-2 text-xs font-normal text-slate-400">{formatoMoneda(subtotalRubro)}</span>}
+              </button>
+            )
+          })}
+        </div>
+
+        <div role="tabpanel" className="rounded-b border border-t-0 border-slate-200 bg-white p-3">
+          {esManoObra && !bloqueada && catalogoServicios.length > 0 && (
+            <div className="mb-4 rounded border border-slate-200 bg-slate-50 p-3">
+              <h3 className="mb-1 text-sm font-semibold text-slate-900">Agregar servicio del catálogo</h3>
+              <p className="mb-3 text-xs text-slate-500">
+                Precio de mano de obra calculado para {ETIQUETA_CARROCERIA[vehiculoCatalogo?.tipo_carroceria] || 'este vehículo'} ·{' '}
+                {vehiculoCatalogo?.tipo_combustible === 'diesel' ? 'Diésel' : 'Bencina'}. Al elegir un servicio se agrega la tarea de mano de obra con su precio, y
+                los repuestos típicos como ítems pendientes de presupuesto -editables o eliminables-.
+              </p>
+              <form onSubmit={agregarServicioCatalogo} className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+                <select
+                  value={categoriaCatalogo}
+                  onChange={(evento) => {
+                    setCategoriaCatalogo(evento.target.value)
+                    setServicioCatalogo('')
+                  }}
+                  className="rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Categoría…</option>
+                  {[...categoriasPorSegmento.entries()].map(([segmento, categorias]) => (
+                    <optgroup key={segmento} label={segmento}>
+                      {[...categorias].sort().map((categoria) => (
+                        <option key={categoria} value={categoria}>
+                          {categoria}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <select
+                  value={servicioCatalogo}
+                  onChange={(evento) => setServicioCatalogo(evento.target.value)}
+                  disabled={!categoriaCatalogo}
+                  className="rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <option value="">Servicio…</option>
+                  {serviciosDeCategoria.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.servicio}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={tecnicoCatalogo}
+                  onChange={(evento) => setTecnicoCatalogo(evento.target.value)}
+                  className="rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Sin asignar todavía</option>
+                  {tecnicos.map((tecnico) => (
+                    <option key={tecnico.id} value={tecnico.id}>
+                      {tecnico.nombre_completo}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  disabled={!servicioCatalogo || agregandoServicioCatalogo}
+                  className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {agregandoServicioCatalogo ? 'Agregando…' : 'Agregar servicio'}
+                </button>
+              </form>
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Detalle</th>
+                  <th className="px-3 py-2">Cant.</th>
+                  {!esManoObra && <th className="px-3 py-2">Verificado</th>}
+                  {tieneAccesoMontos && <th className="px-3 py-2">Costo</th>}
+                  {tieneAccesoPrecioVenta && <th className="px-3 py-2">Precio</th>}
+                  {tieneAccesoPrecioVenta && <th className="px-3 py-2">Total</th>}
+                  <th className="px-3 py-2">Decisión</th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemsPestana.map((item) => {
+                  const tarea = esManoObra ? tareas.find((t) => t.id === item.tarea_taller_id) : null
+                  return (
+                    <tr key={item.id} className="border-t border-slate-100 align-top">
+                      <td className="px-3 py-2 text-slate-800">
+                        {item.detalle}
+                        {tarea && (
+                          <p className="text-xs text-slate-500">
+                            {tarea.usuarios?.nombre_completo || tarea.clickup_asignado_nombre || 'Sin asignar'} · {tarea.estado}
+                          </p>
+                        )}
+                        {item.producto_nombre && (
+                          <p className="mt-0.5 text-xs text-slate-400">
+                            Bodega: {item.producto_nombre} (stock {item.producto_stock_actual} {item.producto_unidad_medida})
+                          </p>
+                        )}
                       </td>
-                    ) : (
-                      <>
-                        {tieneAccesoMontos && (
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              defaultValue={item.costo_unitario ?? ''}
-                              disabled={bloqueada}
-                              onBlur={(evento) => actualizarPrecioItem(item.id, 'costo_unitario', evento.target.value)}
-                              className="w-24 rounded border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-100 disabled:text-slate-500"
-                            />
+                      <td className="px-3 py-2 text-slate-600">{item.cantidad}</td>
+                      {!esManoObra && (
+                        <td className="px-3 py-2">
+                          <label className="flex items-center gap-1 text-xs">
+                            <input type="checkbox" checked={item.verificado} disabled={bloqueada} onChange={() => alternarVerificado(item)} />
+                            <span className={item.verificado ? 'text-green-600' : 'text-slate-400'}>{item.verificado ? 'Verificado' : 'Pendiente'}</span>
+                          </label>
+                        </td>
+                      )}
+                      {(tieneAccesoMontos || tieneAccesoPrecioVenta) &&
+                        (item.provisto_por_cliente ? (
+                          <td className="px-3 py-2 text-xs font-medium text-amber-700" colSpan={columnasMontos}>
+                            Cliente lo trae · no se valoriza
                           </td>
-                        )}
-                        {tieneAccesoPrecioVenta && (
-                          <td className="px-3 py-2">
-                            {tieneAccesoMontos ? (
-                              <input
-                                type="number"
-                                defaultValue={item.precio_unitario ?? ''}
-                                disabled={bloqueada}
-                                onBlur={(evento) => actualizarPrecioItem(item.id, 'precio_unitario', evento.target.value)}
-                                className="w-24 rounded border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-100 disabled:text-slate-500"
-                              />
-                            ) : (
-                              <span className="text-slate-800">{formatoMoneda(item.precio_unitario)}</span>
+                        ) : (
+                          <>
+                            {tieneAccesoMontos && (
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  defaultValue={item.costo_unitario ?? ''}
+                                  disabled={bloqueada}
+                                  onBlur={(evento) => actualizarPrecioItem(item.id, 'costo_unitario', evento.target.value)}
+                                  className="w-24 rounded border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-100 disabled:text-slate-500"
+                                />
+                              </td>
                             )}
-                            {tieneAccesoMontos && item.hallazgo_precio_referencial != null && (
-                              <p className={`mt-1 text-xs ${precioSeAlejaDelReferencial(item) ? 'font-medium text-amber-700' : 'text-slate-400'}`}>
-                                Ref: {formatoMoneda(item.hallazgo_precio_referencial)}
-                                {precioSeAlejaDelReferencial(item) && ' ⚠ se aleja del referencial'}
-                              </p>
+                            {tieneAccesoPrecioVenta && (
+                              <td className="px-3 py-2">
+                                {tieneAccesoMontos ? (
+                                  <input
+                                    type="number"
+                                    defaultValue={item.precio_unitario ?? ''}
+                                    disabled={bloqueada}
+                                    onBlur={(evento) => actualizarPrecioItem(item.id, 'precio_unitario', evento.target.value)}
+                                    className="w-24 rounded border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-100 disabled:text-slate-500"
+                                  />
+                                ) : (
+                                  <span className="text-slate-800">{formatoMoneda(item.precio_unitario)}</span>
+                                )}
+                                {tieneAccesoMontos && item.hallazgo_precio_referencial != null && (
+                                  <p className={`mt-1 text-xs ${precioSeAlejaDelReferencial(item) ? 'font-medium text-amber-700' : 'text-slate-400'}`}>
+                                    Ref: {formatoMoneda(item.hallazgo_precio_referencial)}
+                                    {precioSeAlejaDelReferencial(item) && ' ⚠ se aleja del referencial'}
+                                  </p>
+                                )}
+                              </td>
                             )}
-                          </td>
+                            {tieneAccesoPrecioVenta && <td className="px-3 py-2 text-slate-800">{formatoMoneda(item.total_linea)}</td>}
+                          </>
+                        ))}
+                      <td className="px-3 py-2">
+                        <select
+                          value={item.decision}
+                          disabled={bloqueada}
+                          onChange={(evento) => actualizarDecisionItem(item.id, { decision: evento.target.value })}
+                          className="rounded border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-100 disabled:text-slate-500"
+                        >
+                          {Object.entries(ETIQUETA_DECISION).map(([valor, etiqueta]) => (
+                            <option key={valor} value={valor}>
+                              {etiqueta}
+                            </option>
+                          ))}
+                        </select>
+                        {item.decision === 'rechazado' && (
+                          <input
+                            placeholder="Motivo"
+                            defaultValue={item.motivo_rechazo || ''}
+                            disabled={bloqueada}
+                            onBlur={(evento) => actualizarDecisionItem(item.id, { motivo_rechazo: evento.target.value })}
+                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-500"
+                          />
                         )}
-                        {tieneAccesoPrecioVenta && <td className="px-3 py-2 text-slate-800">{formatoMoneda(item.total_linea)}</td>}
-                      </>
-                    ))}
-                  <td className="px-3 py-2">
+                        {item.decision === 'postergado' && (
+                          <input
+                            type="date"
+                            defaultValue={item.fecha_postergado || ''}
+                            disabled={bloqueada}
+                            onBlur={(evento) => actualizarDecisionItem(item.id, { fecha_postergado: evento.target.value || null })}
+                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-500"
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+                {itemsPestana.length === 0 && (
+                  <tr>
+                    <td colSpan={3 + (esManoObra ? 0 : 1) + columnasMontos} className="px-3 py-6 text-center text-slate-400">
+                      {esManoObra ? 'Sin tareas de mano de obra todavía.' : `Sin ${ETIQUETA_AREA[pestana].toLowerCase()} todavía.`}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {bloqueada ? (
+            <p className="mt-3 rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-400">OT cerrada, no se pueden agregar {esManoObra ? 'tareas' : 'ítems'}.</p>
+          ) : esManoObra ? (
+            <form onSubmit={agregarTarea} className="mt-3 grid grid-cols-1 gap-2 rounded border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_14rem_auto]">
+              <input
+                required
+                value={descripcionTarea}
+                onChange={(evento) => setDescripcionTarea(evento.target.value)}
+                placeholder="Ej. Cambio de pastillas de freno delanteras"
+                className="rounded border border-slate-300 px-3 py-2 text-sm"
+              />
+              <select value={tecnicoTarea} onChange={(evento) => setTecnicoTarea(evento.target.value)} className="rounded border border-slate-300 px-3 py-2 text-sm">
+                <option value="">Sin asignar todavía</option>
+                {tecnicos.map((tecnico) => (
+                  <option key={tecnico.id} value={tecnico.id}>
+                    {tecnico.nombre_completo}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={guardandoTarea}
+                className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                Agregar tarea
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={agregarDetalle} className="mt-3 rounded border border-slate-200 bg-slate-50 p-3">
+              {(pestana === 'repuestos' || pestana === 'lubricantes_insumos') && (
+                <div className="mb-2 flex flex-wrap items-center gap-3">
+                  {!provistoPorCliente && productos.length > 0 && (
                     <select
-                      value={item.decision}
-                      disabled={bloqueada}
-                      onChange={(evento) => actualizarDecisionItem(item.id, { decision: evento.target.value })}
-                      className="rounded border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-100 disabled:text-slate-500"
+                      value={productoDetalle}
+                      onChange={(evento) => setProductoDetalle(evento.target.value)}
+                      className="min-w-0 flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
                     >
-                      {Object.entries(ETIQUETA_DECISION).map(([valor, etiqueta]) => (
-                        <option key={valor} value={valor}>
-                          {etiqueta}
+                      <option value="">Sin vincular a bodega</option>
+                      {productos.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.nombre} (stock {p.stock_actual} {p.unidad_medida})
                         </option>
                       ))}
                     </select>
-                    {item.decision === 'rechazado' && (
-                      <input
-                        placeholder="Motivo"
-                        defaultValue={item.motivo_rechazo || ''}
-                        disabled={bloqueada}
-                        onBlur={(evento) => actualizarDecisionItem(item.id, { motivo_rechazo: evento.target.value })}
-                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-500"
-                      />
-                    )}
-                    {item.decision === 'postergado' && (
-                      <input
-                        type="date"
-                        defaultValue={item.fecha_postergado || ''}
-                        disabled={bloqueada}
-                        onBlur={(evento) => actualizarDecisionItem(item.id, { fecha_postergado: evento.target.value || null })}
-                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-500"
-                      />
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {detalle.length === 0 && (
-                <tr>
-                  <td colSpan={4 + columnasMontos} className="px-3 py-6 text-center text-slate-400">
-                    Todavía no hay ítems para valorizar.
-                  </td>
-                </tr>
+                  )}
+                  <label className="flex items-center gap-2 text-xs text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={provistoPorCliente}
+                      onChange={(evento) => {
+                        setProvistoPorCliente(evento.target.checked)
+                        if (evento.target.checked) setProductoDetalle('')
+                      }}
+                    />
+                    El cliente trae este repuesto (no se valoriza)
+                  </label>
+                </div>
               )}
-            </tbody>
-          </table>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  required
+                  value={detalleTexto}
+                  onChange={(evento) => setDetalleTexto(evento.target.value)}
+                  placeholder={pestana === 'servicios_externos' ? 'Ej. Rectificado de discos' : 'Ej. Filtro de aceite'}
+                  className="min-w-0 flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
+                />
+                <input
+                  type="number"
+                  min="1"
+                  value={cantidadDetalle}
+                  onChange={(evento) => setCantidadDetalle(evento.target.value)}
+                  className="w-20 rounded border border-slate-300 px-3 py-2 text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={guardandoDetalle}
+                  className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  Agregar ítem
+                </button>
+              </div>
+            </form>
+          )}
+
+          {esManoObra && tieneAccesoPrecioVenta && (
+            <DescuentoManoObra
+              incrustado
+              trabajoId={id}
+              empresaId={usuario.empresa_id}
+              porcentajeVigente={trabajo.descuento_mano_obra_pct}
+              subtotalManoObra={calcularDescuentoManoObra(detalle.filter((item) => item.decision === 'aceptado'), 0).subtotalManoObra}
+              bloqueada={bloqueada}
+              rol={usuario?.rol}
+              onCambio={cargarTodo}
+            />
+          )}
         </div>
+
+        {tieneAccesoPrecioVenta && (
+          <div className="mt-3 ml-auto w-full max-w-xs rounded border border-slate-300 bg-white text-sm">
+            <div className="flex justify-between px-3 py-1.5">
+              <span className="text-slate-600">Subtotal (aceptado)</span>
+              <span>{formatoMoneda(totalesOt.totalBruto)}</span>
+            </div>
+            {totalesOt.descuento > 0 && (
+              <div className="flex justify-between border-t border-slate-200 px-3 py-1.5">
+                <span className="text-slate-600">Desc. M.O. ({textoPorcentaje(totalesOt.porcentaje)}%)</span>
+                <span>-{formatoMoneda(totalesOt.descuento)}</span>
+              </div>
+            )}
+            <div className="flex justify-between border-t border-slate-300 bg-slate-100 px-3 py-1.5 font-bold">
+              <span>Total de la OT</span>
+              <span>{formatoMoneda(totalesOt.total)}</span>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="mt-8 max-w-md">

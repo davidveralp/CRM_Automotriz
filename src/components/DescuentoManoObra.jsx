@@ -14,7 +14,7 @@ function formatoMoneda(numero) {
 // Descuento comercial sobre la mano de obra de la OT (0051_descuento_mano_obra.sql).
 // El asesor aplica hasta el límite de la empresa (política interna); más que eso
 // queda pendiente y lo autoriza administración (admin o socia).
-function DescuentoManoObra({ trabajoId, empresaId, porcentajeVigente, subtotalManoObra, bloqueada, rol, onCambio }) {
+function DescuentoManoObra({ incrustado = false, trabajoId, empresaId, porcentajeVigente, subtotalManoObra, bloqueada, rol, onCambio }) {
   const [limite, setLimite] = useState(15)
   const [historial, setHistorial] = useState([])
   const [porcentaje, setPorcentaje] = useState('')
@@ -110,8 +110,8 @@ function DescuentoManoObra({ trabajoId, empresaId, porcentajeVigente, subtotalMa
   }
 
   return (
-    <section className="mt-8 max-w-4xl">
-      <h2 className="mb-1 text-lg font-semibold text-slate-900">Descuento en mano de obra</h2>
+    <section className={incrustado ? 'mt-4 border-t border-slate-200 pt-3' : 'mt-8 max-w-4xl'}>
+      <h2 className={`mb-1 font-semibold text-slate-900 ${incrustado ? 'text-base' : 'text-lg'}`}>Descuento en mano de obra</h2>
       <p className="mb-2 text-sm text-slate-500">
         Solo aplica a la mano de obra. El asesor puede llegar hasta {textoPorcentaje(limite)}%; un descuento mayor lo autoriza administración.
       </p>

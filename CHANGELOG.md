@@ -1,5 +1,14 @@
 # Registro de cambios
 
+## 2026-09-26 — Trabajo y valorización de la OT en pestañas por rubro (solo frontend)
+
+**Qué se entrega:** en el detalle de la OT, las cuatro secciones que estaban separadas (agregar servicio del catálogo, "Mano de obra", "Repuestos, insumos y servicios externos" y "Valorización y negociación") pasan a un solo panel, **Trabajo y valorización**, con pestañas **Mano de obra**, **Repuestos**, **Lubricantes e insumos** y **Servicios externos** (el mismo orden de la orden de egreso).
+
+- Cada pestaña muestra su tabla única (detalle, cantidad, verificado en bodega, costo, precio, total y decisión) con la cantidad de ítems y, según el rol, el subtotal aceptado del rubro.
+- Mano de obra: cada línea muestra el técnico y el estado de su tarea; contiene el formulario de tareas, "Agregar servicio del catálogo" y el descuento de mano de obra. Los otros rubros llevan su formulario de ítem (con vínculo a bodega y "el cliente trae el repuesto" en repuestos y lubricantes).
+- Debajo del panel, el total de la OT con el descuento (subtotal aceptado, descuento y total), igual que la orden de egreso. "Generar presupuesto" y los presupuestos con su WhatsApp quedan en la cabecera del panel.
+- Verificado en el navegador (demo): las cuatro pestañas, sus tablas y formularios; cada formulario envía el rubro correcto (llamada interceptada, sin crear datos).
+
 ## 2026-09-26 — Descuento en mano de obra, orden de egreso ordenada y orden de ingreso consultable (`0051_descuento_mano_obra.sql`)
 
 **Qué se entrega:** tres ajustes a los documentos.
