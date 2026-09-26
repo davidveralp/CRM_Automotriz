@@ -19,6 +19,7 @@ import {
 } from '../lib/facturacion'
 
 import { formatearPatente } from '../lib/patente'
+import { aplicarDescuentoALineas, textoPorcentaje } from '../lib/descuento'
 const RECEPTOR_VACIO = { rut: '', razon_social: '', giro: '', direccion: '', comuna: '', ciudad: '', correo: '' }
 const TIPOS_QUE_REFERENCIAN = [56, 61]
 const TIPOS_DE_VENTA_A_OT = [33, 34, 39, 41]
@@ -149,12 +150,12 @@ function FacturacionDetalle() {
       const [{ data: trabajo, error: errorTrabajo }, { data: items, error: errorItems }, { data: previos }] = await Promise.all([
         supabase
           .from('trabajos_taller')
-          .select('id, numero_ot, tipo_documento, clientes(id, tipo, nombre, apellido, razon_social, rut, email, direccion), vehiculos(patente)')
+          .select('id, numero_ot, descuento_mano_obra_pct, tipo_documento, clientes(id, tipo, nombre, apellido, razon_social, rut, email, direccion), vehiculos(patente)')
           .eq('id', trabajoParam)
           .maybeSingle(),
         supabase
           .from('ot_detalle_con_permiso')
-          .select('detalle, cantidad, precio_unitario, provisto_por_cliente')
+          .select('area, detalle, cantidad, precio_unitario, provisto_por_cliente')
           .eq('trabajo_id', trabajoParam)
           .eq('decision', 'aceptado')
           .order('creado_en'),
@@ -185,13 +186,26 @@ function FacturacionDetalle() {
 
       const cobrables = (items || []).filter((i) => !i.provisto_por_cliente)
       const sinPrecio = cobrables.filter((i) => i.precio_unitario == null).length
+      // El descuento de mano de obra de la OT se reparte en las líneas de mano de obra
+      // (el documento no admite líneas negativas): el total queda igual al de la orden de egreso.
+      const lineasOt = cobrables.map((i) => ({
+        area: i.area,
+        nombre: i.detalle,
+        cantidad: Number(i.cantidad),
+        precio_unitario: i.precio_unitario ?? 0,
+        exento: false,
+      }))
+      const conDescuento = aplicarDescuentoALineas(lineasOt, trabajo.descuento_mano_obra_pct)
       setLineas(
         cobrables.length > 0
-          ? cobrables.map((i) => ({ nombre: i.detalle, cantidad: Number(i.cantidad), precio_unitario: i.precio_unitario ?? 0, exento: false }))
+          ? conDescuento.map((linea) => ({ nombre: linea.nombre, cantidad: linea.cantidad, precio_unitario: linea.precio_unitario, exento: linea.exento }))
           : [lineaVacia()]
       )
 
       const nuevosAvisos = [`Líneas tomadas de los ítems aceptados de la OT ${trabajo.numero_ot} (${formatearPatente(trabajo.vehiculos?.patente) || 'sin patente'}); los precios ya incluyen IVA.`]
+      if (Number(trabajo.descuento_mano_obra_pct) > 0) {
+        nuevosAvisos.push(`Se aplicó el descuento de ${textoPorcentaje(trabajo.descuento_mano_obra_pct)}% de la OT sobre la mano de obra (precios ya rebajados).`)
+      }
       if (sinPrecio > 0) nuevosAvisos.push(`${sinPrecio} ítem(s) no traen precio (tu rol no ve montos, o siguen sin valorizar): quedaron en $0, revísalos.`)
       if ((previos || []).length > 0) {
         nuevosAvisos.push('Esta OT ya tiene un documento tributario en curso o emitido. Revisa la lista antes de emitir otro para no facturar dos veces.')

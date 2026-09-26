@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2026-09-26 — Descuento en mano de obra, orden de egreso ordenada y orden de ingreso consultable (`0051_descuento_mano_obra.sql`)
+
+**Qué se entrega:** tres ajustes a los documentos.
+
+- **Orden de egreso:** las áreas se imprimen en el orden mano de obra, repuestos, lubricantes e insumos y servicios externos.
+- **Orden de ingreso consultable:** nueva página `/trabajos/:id/ingreso` (`OrdenIngreso.jsx`) que arma el documento desde lo guardado (cliente, vehículo, "Cliente solicita", diagrama de daños, políticas y firma), con el botón "Orden de ingreso" en la OT. Antes solo se veía al terminar de registrar el ingreso, desde el estado de la pantalla.
+- **Descuento en mano de obra:** `trabajos_taller.descuento_mano_obra_pct` (solo sobre el subtotal de mano de obra). El asesor aplica hasta `empresas.descuento_max_asesor_pct` (15 por defecto, política interna) con motivo obligatorio; sobre ese límite queda una solicitud pendiente en `descuentos_ot` que autorizan admin o socia, con notificación en el panel de inicio (`descuento_pendiente`) y aviso al asesor (`descuento_resuelto`). Admin y socia pueden aplicarlo directo. Las funciones `ot_descuento_mano_obra_solicitar` y `_resolver` son la única vía: un trigger impide cambiar el porcentaje con un UPDATE directo, y una OT entregada, anulada o bloqueada no admite cambios. Sección "Descuento en mano de obra" en la OT (`DescuentoManoObra.jsx`) con historial.
+- **Dónde se aplica:** presupuesto, orden de egreso, lista de presupuestos, cuentas por cobrar y el mensaje de WhatsApp del presupuesto; en factura/boleta (`FacturacionDetalle`) el descuento se reparte en las líneas de mano de obra (el documento no admite líneas negativas) para que el total sea idéntico al de la orden de egreso (`lib/descuento.js`).
+- **Demo:** una OT (PRUE04) con 10% aplicado y otra (PRUE05) con 20% pendiente de autorización.
+
 ## 2026-09-26 — Técnicos reales en la demo (`0050_demo_tecnicos_reales.sql`)
 
 **Qué se entrega:** el equipo técnico de la demo usa los mismos nombres y funciones que el de Didial.

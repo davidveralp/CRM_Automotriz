@@ -25,6 +25,7 @@ import Taller from './pages/Taller'
 import Presupuestos from './pages/Presupuestos'
 import PresupuestoDetalle from './pages/PresupuestoDetalle'
 import OrdenEgreso from './pages/OrdenEgreso'
+import OrdenIngreso from './pages/OrdenIngreso'
 import CuentasPorCobrar from './pages/CuentasPorCobrar'
 import PuntoVenta from './pages/PuntoVenta'
 import Mensajes from './pages/Mensajes'
@@ -103,6 +104,10 @@ function App() {
               'jefe_taller',
               'asesor',
             ])}
+          />
+          <Route
+            path="/trabajos/:id/ingreso"
+            element={paginaProtegida(<OrdenIngreso />, ['admin', 'socia', 'encargado_presupuestos', 'jefe_taller', 'asesor', 'recepcionista'])}
           />
           <Route
             path="/trabajos/:id/egreso"

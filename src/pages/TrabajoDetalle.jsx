@@ -5,7 +5,9 @@ import { useAuth } from '../context/AuthContext'
 import { invocarFuncion } from '../lib/invocarFuncion'
 import FirmaCanvas from '../components/FirmaCanvas'
 
+import DescuentoManoObra from '../components/DescuentoManoObra'
 import { formatearPatente } from '../lib/patente'
+import { calcularDescuentoManoObra } from '../lib/descuento'
 const ETIQUETA_AREA = {
   mano_obra: 'Mano de obra',
   repuestos: 'Repuestos',
@@ -124,7 +126,7 @@ function TrabajoDetalle() {
       ] = await Promise.all([
         supabase
           .from('trabajos_taller')
-          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, clickup_task_id, numero_documento_facturacion, tipo_documento, estado_pago, fecha_vencimiento_pago, fecha_entrega, vehiculo_id, bloqueada_en, reabierta_en, clientes(nombre, apellido, razon_social, rut, tipo, telefono, telefono_norm), vehiculos(patente, marca, modelo, anio, kilometraje, tipo_carroceria, tipo_combustible)')
+          .select('id, numero_ot, tipo_ingreso, estado, categoria_servicio, descuento_mano_obra_pct, clickup_task_id, numero_documento_facturacion, tipo_documento, estado_pago, fecha_vencimiento_pago, fecha_entrega, vehiculo_id, bloqueada_en, reabierta_en, clientes(nombre, apellido, razon_social, rut, tipo, telefono, telefono_norm), vehiculos(patente, marca, modelo, anio, kilometraje, tipo_carroceria, tipo_combustible)')
           .eq('id', id)
           .maybeSingle(),
         supabase
@@ -530,6 +532,12 @@ function TrabajoDetalle() {
         </div>
         <div className="flex items-start gap-2 text-right">
           <Link
+            to={`/trabajos/${id}/ingreso`}
+            className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Orden de ingreso
+          </Link>
+          <Link
             to={`/trabajos/${id}/radar`}
             className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
@@ -831,6 +839,18 @@ function TrabajoDetalle() {
         </section>
       </div>
 
+      {tieneAccesoPrecioVenta && (
+        <DescuentoManoObra
+          trabajoId={id}
+          empresaId={usuario.empresa_id}
+          porcentajeVigente={trabajo.descuento_mano_obra_pct}
+          subtotalManoObra={calcularDescuentoManoObra(detalle.filter((item) => item.decision === 'aceptado'), 0).subtotalManoObra}
+          bloqueada={bloqueada}
+          rol={usuario?.rol}
+          onCambio={cargarTodo}
+        />
+      )}
+
       <section className="mt-8 max-w-4xl">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Valorización y negociación</h2>
@@ -849,9 +869,10 @@ function TrabajoDetalle() {
         {presupuestos.length > 0 && (
           <div className="mb-2 space-y-1 text-sm text-slate-500">
             {presupuestos.map((p) => {
-              const totalPresupuesto = detalle
-                .filter((item) => item.presupuesto_id === p.id)
-                .reduce((acumulado, item) => acumulado + (item.total_linea || 0), 0)
+              const totalPresupuesto = calcularDescuentoManoObra(
+                detalle.filter((item) => item.presupuesto_id === p.id),
+                trabajo.descuento_mano_obra_pct
+              ).total
               const telefonoCliente = trabajo?.clientes?.telefono_norm
               const linkWhatsapp = telefonoCliente
                 ? `https://wa.me/${telefonoCliente.replace('+', '')}?text=${encodeURIComponent(

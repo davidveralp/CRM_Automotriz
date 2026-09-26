@@ -7,6 +7,7 @@ import CampoDato from '../components/CampoDato'
 import BloqueTotales from '../components/BloqueTotales'
 
 import { formatearPatente } from '../lib/patente'
+import { calcularDescuentoManoObra, textoPorcentaje } from '../lib/descuento'
 const ETIQUETA_ESTADO = {
   borrador: 'Borrador',
   enviado: 'Enviado · esperando respuesta',
@@ -91,7 +92,7 @@ function PresupuestoDetalle() {
           supabase
             .from('trabajos_taller')
             .select(
-              'numero_ot, clientes(nombre, apellido, razon_social, rut, telefono_norm), vehiculos(patente, marca, modelo, anio, color)'
+              'numero_ot, descuento_mano_obra_pct, clientes(nombre, apellido, razon_social, rut, telefono_norm), vehiculos(patente, marca, modelo, anio, color)'
             )
             .eq('id', presupuestoData.trabajo_id)
             .maybeSingle(),
@@ -175,7 +176,7 @@ function PresupuestoDetalle() {
     acumulado[item.area].push(item)
     return acumulado
   }, {})
-  const total = items.reduce((acumulado, item) => acumulado + (item.total_linea || 0), 0)
+  const { descuento, total, totalBruto, porcentaje } = calcularDescuentoManoObra(items, trabajo?.descuento_mano_obra_pct)
   const neto = Math.round(total / 1.19)
   const iva = total - neto
   const textoPoliticas = politicas[presupuesto.condiciones] || null
@@ -189,7 +190,8 @@ function PresupuestoDetalle() {
           '',
           ...items.map((item) => `- ${item.detalle}: $${formatoNumero(item.total_linea)}`),
           '',
-          `Total: $${formatoNumero(total)}`,
+          ...(descuento > 0 ? [`Descuento en mano de obra (${textoPorcentaje(porcentaje)}%): -${formatoNumero(descuento)}`] : []),
+          `Total: ${formatoNumero(total)}`,
           '',
           'Quedamos atentos a tus consultas.',
         ].join('\n')
@@ -378,6 +380,12 @@ function PresupuestoDetalle() {
         <div className="mt-2 print:mt-auto">
           <BloqueTotales
             filas={[
+              ...(descuento > 0
+                ? [
+                    { etiqueta: 'SUBTOTAL', valor: formatoNumero(totalBruto) },
+                    { etiqueta: `Desc. mano de obra (${textoPorcentaje(porcentaje)}%)`, valor: `-${formatoNumero(descuento)}` },
+                  ]
+                : []),
               { etiqueta: 'NETO', valor: formatoNumero(neto) },
               { etiqueta: 'I.V.A.', valor: formatoNumero(iva) },
               { etiqueta: 'TOTAL', valor: formatoNumero(total), destacado: true },

@@ -8,6 +8,7 @@ import BloqueFirma from '../components/BloqueFirma'
 import BloqueTotales from '../components/BloqueTotales'
 
 import { formatearPatente } from '../lib/patente'
+import { calcularDescuentoManoObra, textoPorcentaje } from '../lib/descuento'
 const ETIQUETA_AREA = {
   repuestos: 'Repuestos',
   lubricantes_insumos: 'Lubricantes y Otros Insumos',
@@ -15,7 +16,7 @@ const ETIQUETA_AREA = {
   mano_obra: 'Mano de Obra',
 }
 
-const AREAS_ORDEN = ['repuestos', 'lubricantes_insumos', 'servicios_externos', 'mano_obra']
+const AREAS_ORDEN = ['mano_obra', 'repuestos', 'lubricantes_insumos', 'servicios_externos']
 
 function nombreCliente(cliente) {
   if (!cliente) return ''
@@ -62,7 +63,7 @@ function OrdenEgreso() {
         supabase
           .from('trabajos_taller')
           .select(
-            'numero_ot, fecha_entrega, tipo_documento, numero_documento_facturacion, estado_pago, fecha_vencimiento_pago, ' +
+            'numero_ot, fecha_entrega, descuento_mano_obra_pct, tipo_documento, numero_documento_facturacion, estado_pago, fecha_vencimiento_pago, ' +
               'clientes(nombre, apellido, razon_social, rut, tipo, direccion, email, telefono), ' +
               'vehiculos(patente, marca, modelo, anio, color, kilometraje)'
           )
@@ -116,7 +117,7 @@ function OrdenEgreso() {
     acumulado[item.area].push(item)
     return acumulado
   }, {})
-  const total = items.reduce((acumulado, item) => acumulado + (item.total_linea || 0), 0)
+  const { descuento, total, totalBruto, porcentaje } = calcularDescuentoManoObra(items, trabajo.descuento_mano_obra_pct)
   const colorCirculo = trabajo.clientes?.tipo === 'empresa' ? '#2563eb' : '#16a34a'
 
   return (
@@ -232,7 +233,17 @@ function OrdenEgreso() {
                   : '')
               : ''}
           </p>
-          <BloqueTotales filas={[{ etiqueta: 'TOTAL', valor: formatoNumero(total), destacado: true }]} />
+          <BloqueTotales
+            filas={
+              descuento > 0
+                ? [
+                    { etiqueta: 'SUBTOTAL', valor: formatoNumero(totalBruto) },
+                    { etiqueta: `Desc. mano de obra (${textoPorcentaje(porcentaje)}%)`, valor: `-${formatoNumero(descuento)}` },
+                    { etiqueta: 'TOTAL', valor: formatoNumero(total), destacado: true },
+                  ]
+                : [{ etiqueta: 'TOTAL', valor: formatoNumero(total), destacado: true }]
+            }
+          />
         </div>
 
         <div className="mb-3 border-b border-slate-300 pb-3">
