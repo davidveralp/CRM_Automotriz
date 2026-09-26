@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2026-09-25 — Sincronización completa de la demo con ClickUp (`0049_demo_estados_clickup.sql`)
+
+**Qué se entrega:** una herramienta para reflejar en la lista demo de ClickUp todo lo vigente del ambiente de prueba. Sin migraciones; se despliega `clickup-sincronizar`.
+
+- **Panel "Sincronizar la demo con ClickUp"** (`components/SincronizarDemoClickUp.jsx`), al inicio de Trabajos, solo en la cuenta demo y solo para admin y socia. Muestra cuánto va a enviar y pide confirmación. Envía las OT activas (tarjeta, subtareas y listas de control) y las citas vigentes sin tarjeta; no envía OT entregadas ni anuladas ni citas pasadas. Se puede repetir sin duplicar.
+- **`clickup-sincronizar` acepta `forzar_estado`:** deja la tarjeta y sus subtareas en el estado que ya tiene la OT en el CRM y vuelve a llenar los campos personalizados en tarjetas que ya existían.
+- **Causa de los "Status does not exist":** los datos de la demo usaban estados inventados ("en ejecución", "esperando aprobación", "presentado al cliente", "en detección", "ingresado", "compra reptos") que no existen en ClickUp. Las tarjetas nacieron en "por designar" y el webhook devolvió ese estado a la base, pisando el de las OT (quedaron 11 en "por designar"). `0049_demo_estados_clickup.sql` reasigna cada OT activa de la demo a un estado real de la lista (y a sus subtareas el de su OT), con el tiempo que llevan en él; `0039` se corrigió para que una demo nueva nazca igual.
+- **`forzar_estado` también actualiza las subtareas que ya existían** al estado que tienen en el CRM.
+- **Corridas (demo):** la primera creó 12 OT (11 tarjetas nuevas) y 17 citas, con 66 avisos porque faltaban los 6 campos personalizados y los estados eran inventados. Tras crear los campos en ClickUp (el ID de "Datos del cliente" se guardó en `clickup_config.campos` de la demo) y corregir los estados (`0049`), la segunda pasada terminó sin avisos: 12 de 12 OT con estado real y campos llenos. ClickUp limita a unas 100 llamadas por minuto: el panel pausa 8 s entre OT y reintenta tras un minuto si responde "Rate limit". Los eventos de ClickUp reiniciaron el tiempo en estado de las OT; se restauró con un UPDATE de `estado_cambiado_en`.
+
 ## 2026-09-25 — Agenda según la disponibilidad del personal (`0048_agenda_por_personal.sql`)
 
 **Qué se entrega:** la capacidad de la Agenda deja de ser un número fijo por isla y pasa a depender de quién está disponible en cada bloque de 30 minutos.

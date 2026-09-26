@@ -32,7 +32,10 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return respuestaPreflight()
 
   try {
-    const { trabajo_id: trabajoId } = await req.json()
+    // forzar_estado: además de crear lo que falte, deja la tarjeta y sus subtareas
+    // en el estado que ya tiene la OT en el CRM (lo usa la sincronización completa
+    // de la demo, cuyos datos traen estados que ClickUp todavía no conoce).
+    const { trabajo_id: trabajoId, forzar_estado: forzarEstado } = await req.json()
     if (!trabajoId) {
       return respuestaJson({ error: { mensaje: 'Falta trabajo_id.' } }, 400)
     }
@@ -46,7 +49,7 @@ Deno.serve(async (req) => {
     const { data: trabajoCrudo, error: errorTrabajo } = await supabase
       .from('trabajos_taller')
       .select(
-        'id, empresa_id, numero_ot, categoria_servicio, kilometraje_ingreso, clickup_task_id, cita_id, clientes(nombre, apellido, razon_social, telefono), vehiculos(patente, marca, modelo, kilometraje), inspecciones_ingreso(observaciones)'
+        'id, empresa_id, numero_ot, categoria_servicio, kilometraje_ingreso, clickup_task_id, clickup_estado_actual, cita_id, clientes(nombre, apellido, razon_social, telefono), vehiculos(patente, marca, modelo, kilometraje), inspecciones_ingreso(observaciones)'
       )
       .eq('id', trabajoId)
       .maybeSingle()
@@ -65,6 +68,7 @@ Deno.serve(async (req) => {
       categoria_servicio: string | null
       kilometraje_ingreso: number | null
       clickup_task_id: string | null
+      clickup_estado_actual: string | null
       cita_id: string | null
       clientes: { nombre: string; apellido: string | null; razon_social: string | null; telefono: string | null } | { nombre: string; apellido: string | null; razon_social: string | null; telefono: string | null }[] | null
       vehiculos: { patente: string; marca: string; modelo: string; kilometraje: number | null } | { patente: string; marca: string; modelo: string; kilometraje: number | null }[] | null
@@ -130,8 +134,8 @@ Deno.serve(async (req) => {
         }
       }
     }
-    if (!clickupTaskId || adoptada) {
-      if (!adoptada) {
+    if (!clickupTaskId || adoptada || forzarEstado) {
+      if (!adoptada && !clickupTaskId) {
         try {
           const estadoInicial = trabajo.cita_id ? ESTADO_TARJETA_CON_CITA : ESTADO_TARJETA_SIN_CITA
           const tarea = (await crearTarea(config.lista_trabajos_id, {
@@ -146,8 +150,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Campos personalizados: solo al crear (si cambian después, se
-      // actualizan aquí mismo en una próxima sincronización si hace falta).
+      // Campos personalizados: al crear la tarjeta y, con forzar_estado, también en
+      // las que ya existen (sirve cuando los campos se crearon en ClickUp después).
       const camposAFijar: [string, unknown][] = [
         [campos.ids.numeroOt, String(trabajo.numero_ot)],
         [campos.ids.patente, vehiculo?.patente ?? ''],
@@ -176,6 +180,15 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 1b. Estado de la tarjeta igual al de la OT (solo si se pide).
+    if (forzarEstado && trabajo.clickup_estado_actual) {
+      try {
+        await actualizarTarea(clickupTaskId as string, { status: trabajo.clickup_estado_actual })
+      } catch (error) {
+        await registrarError('estado_tarjeta', error)
+      }
+    }
+
     // 2. Miembros del equipo, para cruzar el asignado por correo (spec §7).
     let miembros: MiembroClickUp[] = []
     try {
@@ -187,7 +200,7 @@ Deno.serve(async (req) => {
     // 3. Mano de obra pendiente -> subtareas.
     const { data: tareasPendientes } = await supabase
       .from('tareas_taller')
-      .select('id, descripcion, tecnico_id, usuarios(correo)')
+      .select('id, descripcion, estado, tecnico_id, usuarios(correo)')
       .eq('trabajo_id', trabajoId)
       .is('clickup_task_id', null)
 
@@ -202,6 +215,17 @@ Deno.serve(async (req) => {
           assignees: miembro ? [miembro.id] : [],
         })) as { id: string; status?: { status?: string } }
 
+        // Con forzar_estado la subtarea toma el estado que la tarea ya tenía en el CRM.
+        let estadoSubtarea = nuevaSubtarea.status?.status ?? 'agenda'
+        if (forzarEstado && tarea.estado && tarea.estado !== estadoSubtarea) {
+          try {
+            await actualizarTarea(nuevaSubtarea.id, { status: tarea.estado })
+            estadoSubtarea = tarea.estado
+          } catch (error) {
+            await registrarError(`estado_subtarea:${tarea.id}`, error)
+          }
+        }
+
         // clickup_asignado_nombre no se toca acá: en este sentido (CRM ->
         // ClickUp) el técnico ya se conoce por tecnico_id. Ese campo es
         // para el sentido contrario, cuando ClickUp trae un asignado que no
@@ -210,12 +234,30 @@ Deno.serve(async (req) => {
           .from('tareas_taller')
           .update({
             clickup_task_id: nuevaSubtarea.id,
-            estado: nuevaSubtarea.status?.status ?? 'agenda',
+            estado: estadoSubtarea,
           })
           .eq('id', tarea.id)
         tareasSincronizadas++
       } catch (error) {
         await registrarError(`tarea_taller:${tarea.id}`, error)
+      }
+    }
+
+    // 3b. Con forzar_estado, las subtareas que ya existían también quedan en el
+    // estado que tienen en el CRM.
+    if (forzarEstado) {
+      const { data: subtareasExistentes } = await supabase
+        .from('tareas_taller')
+        .select('id, estado, clickup_task_id')
+        .eq('trabajo_id', trabajoId)
+        .not('clickup_task_id', 'is', null)
+        .not('estado', 'is', null)
+      for (const subtarea of subtareasExistentes ?? []) {
+        try {
+          await actualizarTarea(subtarea.clickup_task_id as string, { status: subtarea.estado })
+        } catch (error) {
+          await registrarError(`estado_subtarea:${subtarea.id}`, error)
+        }
       }
     }
 

@@ -1,10 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import { useAuth } from '../context/AuthContext'
+import SincronizarDemoClickUp from '../components/SincronizarDemoClickUp'
 
 import { formatearPatente } from '../lib/patente'
 function Trabajos() {
   const navegar = useNavigate()
+  const { usuario } = useAuth()
+  const puedeSincronizarDemo = Boolean(usuario?.empresas?.es_demo) && ['admin', 'socia'].includes(usuario?.rol)
   const [busqueda, setBusqueda] = useState('')
   const [trabajos, setTrabajos] = useState([])
   const [buscando, setBuscando] = useState(false)
@@ -57,6 +61,8 @@ function Trabajos() {
   return (
     <div className="p-6">
       <h1 className="mb-4 text-xl font-semibold text-slate-900">Trabajos</h1>
+
+      {puedeSincronizarDemo && <SincronizarDemoClickUp />}
 
       <form onSubmit={buscar} className="mb-4 flex max-w-md gap-2">
         <input

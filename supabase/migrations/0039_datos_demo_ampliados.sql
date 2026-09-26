@@ -377,10 +377,7 @@ begin
   update public.trabajos_taller t
   set clickup_estado_actual = x.estado
   from (values
-    ('PRUE03', 'en ejecución', 95), ('PRUE04', 'esperando aprobación', 300), ('PRUE05', 'compra reptos', 1500),
-    ('PRUE07', 'presentado al cliente', 45), ('PRUE09', 'en detección', 20), ('PRUE10', 'ingresado', 30),
-    ('PRUE23', 'en ejecución', 50), ('PRUE26', 'en ejecución', 1400), ('PRUE21', 'en ejecución', 25),
-    ('PRUE28', 'en detección', 15), ('PRUE29', 'esperando aprobación', 170)
+    ('PRUE03', 'en reparación', 95), ('PRUE04', 'espera reptos (cliente)', 300), ('PRUE05', 'compra reptos (victor)', 1500), ('PRUE07', 'alineacion', 45), ('PRUE09', 'por designar', 20), ('PRUE10', 'por designar', 30), ('PRUE23', 'lavado', 50), ('PRUE26', 'pintura/desabolladura', 1400), ('PRUE21', 'en reparación', 25), ('PRUE28', 'prueba en ruta', 15), ('PRUE29', 'espera reptos (cliente)', 170)
   ) as x(patente, estado, mins)
   where t.empresa_id = emp and t.estado not in ('entregado', 'anulado')
     and t.vehiculo_id = (select id from public.vehiculos where empresa_id = emp and patente = x.patente);
@@ -388,10 +385,7 @@ begin
   update public.trabajos_taller t
   set estado_cambiado_en = now() - make_interval(mins => x.mins)
   from (values
-    ('PRUE03', 'en ejecución', 95), ('PRUE04', 'esperando aprobación', 300), ('PRUE05', 'compra reptos', 1500),
-    ('PRUE07', 'presentado al cliente', 45), ('PRUE09', 'en detección', 20), ('PRUE10', 'ingresado', 30),
-    ('PRUE23', 'en ejecución', 50), ('PRUE26', 'en ejecución', 1400), ('PRUE21', 'en ejecución', 25),
-    ('PRUE28', 'en detección', 15), ('PRUE29', 'esperando aprobación', 170)
+    ('PRUE03', 'en reparación', 95), ('PRUE04', 'espera reptos (cliente)', 300), ('PRUE05', 'compra reptos (victor)', 1500), ('PRUE07', 'alineacion', 45), ('PRUE09', 'por designar', 20), ('PRUE10', 'por designar', 30), ('PRUE23', 'lavado', 50), ('PRUE26', 'pintura/desabolladura', 1400), ('PRUE21', 'en reparación', 25), ('PRUE28', 'prueba en ruta', 15), ('PRUE29', 'espera reptos (cliente)', 170)
   ) as x(patente, estado, mins)
   where t.empresa_id = emp and t.estado not in ('entregado', 'anulado')
     and t.vehiculo_id = (select id from public.vehiculos where empresa_id = emp and patente = x.patente);
