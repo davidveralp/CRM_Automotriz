@@ -1,6 +1,16 @@
 # Registro de cambios
 
-## 2026-09-27 — Columna de técnico con iniciales en Mano de obra, al estilo ClickUp (solo frontend) La columna va al final de la tabla, no al principio.
+## 2026-09-27 — Observaciones del asesor en cada OT (`0054_observaciones_asesor.sql`)
+
+**Qué se entrega:** una bitácora de notas del asesor visible en toda la OT (preferencias del cliente, acuerdos, seguimiento), distinta de "Observaciones de postventa" (que sigue solo para después de la entrega).
+
+- Tabla `observaciones_asesor` (mismo patrón que `observaciones_postventa`: solo agregar, sin editar ni borrar, RLS por empresa). Se puede seguir agregando con la OT ya entregada/bloqueada -son notas, no datos estructurales.
+- Sección "Observaciones del asesor" en la ficha de la OT, arriba de "Trabajo y valorización": lista con autor y fecha, más un formulario para agregar una nota nueva.
+- Verificado en el navegador (demo): se guardó una nota con autor y fecha correctos.
+
+## 2026-09-27 — Columna de técnico con iniciales en Mano de obra, al estilo ClickUp (solo frontend)
+
+La columna va al final de la tabla, no al principio.
 
 **Qué se entrega:** en la pestaña Mano de obra de la OT, cada tarea tiene ahora una columna "Técnico" con un círculo de color y las iniciales de quien está a cargo, igual que el avatar de asignado en ClickUp; el nombre completo sale al pasar el mouse.
 

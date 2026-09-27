@@ -128,11 +128,14 @@ function TrabajoDetalle() {
   const [tecnicos, setTecnicos] = useState([])
   const [productos, setProductos] = useState([])
   const [observaciones, setObservaciones] = useState([])
+  const [observacionesAsesor, setObservacionesAsesor] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
 
   const [textoObservacion, setTextoObservacion] = useState('')
   const [guardandoObservacion, setGuardandoObservacion] = useState(false)
+  const [textoObservacionAsesor, setTextoObservacionAsesor] = useState('')
+  const [guardandoObservacionAsesor, setGuardandoObservacionAsesor] = useState(false)
   const [cambiandoBloqueo, setCambiandoBloqueo] = useState(false)
 
   const [descripcionTarea, setDescripcionTarea] = useState('')
@@ -185,6 +188,7 @@ function TrabajoDetalle() {
         { data: tecnicosData },
         { data: productosData },
         { data: observacionesData },
+        { data: observacionesAsesorData },
       ] = await Promise.all([
         supabase
           .from('trabajos_taller')
@@ -211,6 +215,11 @@ function TrabajoDetalle() {
           .select('id, texto, creado_en, usuarios(nombre_completo)')
           .eq('trabajo_id', id)
           .order('creado_en', { ascending: false }),
+        supabase
+          .from('observaciones_asesor')
+          .select('id, texto, creado_en, usuarios(nombre_completo)')
+          .eq('trabajo_id', id)
+          .order('creado_en', { ascending: false }),
       ])
 
       if (errorTrabajo) {
@@ -225,6 +234,7 @@ function TrabajoDetalle() {
       setTecnicos(tecnicosData || [])
       setProductos(productosData || [])
       setObservaciones(observacionesData || [])
+      setObservacionesAsesor(observacionesAsesorData || [])
     } catch {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
     } finally {
@@ -560,6 +570,28 @@ function TrabajoDetalle() {
     }
   }
 
+  async function agregarObservacionAsesor(evento) {
+    evento.preventDefault()
+    if (!textoObservacionAsesor.trim()) return
+    setGuardandoObservacionAsesor(true)
+    setError(null)
+    try {
+      const { error: errorInsercion } = await supabase
+        .from('observaciones_asesor')
+        .insert({ trabajo_id: id, autor_id: usuario.id, texto: textoObservacionAsesor.trim() })
+      if (errorInsercion) {
+        setError(errorInsercion.message)
+        return
+      }
+      setTextoObservacionAsesor('')
+      await cargarTodo()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setGuardandoObservacionAsesor(false)
+    }
+  }
+
   async function agregarObservacionPostventa(evento) {
     evento.preventDefault()
     if (!textoObservacion.trim()) return
@@ -702,6 +734,39 @@ function TrabajoDetalle() {
           )}
         </div>
       )}
+
+      <section className="mb-6 max-w-4xl rounded border border-slate-200 bg-white p-4">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">Observaciones del asesor</h2>
+        {observacionesAsesor.length > 0 && (
+          <ul className="mb-3 max-h-48 divide-y divide-slate-100 overflow-y-auto rounded border border-slate-200">
+            {observacionesAsesor.map((observacion) => (
+              <li key={observacion.id} className="px-3 py-2 text-sm">
+                <p className="whitespace-pre-line text-slate-800">{observacion.texto}</p>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {observacion.usuarios?.nombre_completo || 'Sin autor'} · {new Date(observacion.creado_en).toLocaleString('es-CL')}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form onSubmit={agregarObservacionAsesor} className="flex flex-wrap items-start gap-2">
+          <textarea
+            required
+            value={textoObservacionAsesor}
+            onChange={(evento) => setTextoObservacionAsesor(evento.target.value)}
+            rows={2}
+            placeholder="Ej. cliente prefiere que lo llamen después de las 18:00, pidió el presupuesto por WhatsApp…"
+            className="min-w-0 flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={guardandoObservacionAsesor}
+            className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {guardandoObservacionAsesor ? 'Guardando…' : 'Agregar'}
+          </button>
+        </form>
+      </section>
 
       <section className="max-w-5xl">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
