@@ -2,7 +2,14 @@
 //
 // Recibe los eventos que ClickUp manda cuando algo cambia en la lista de
 // trabajos: nueva subtarea (el jefe de taller la crea directamente en
-// ClickUp), cambio de estado, de asignado, o de un ítem de checklist.
+// ClickUp), cambio de estado, de asignado, de la observación del técnico, o
+// de un ítem de checklist (creado, editado o eliminado).
+//
+// ClickUp no manda un evento al eliminar una tarea/subtarea (no hay
+// "taskDeleted" entre los eventos suscritos, ver clickup-demo.mjs): borrar
+// una subtarea completa en ClickUp no se refleja en el CRM. Sí se refleja
+// borrar un ÍTEM de un checklist (Repuestos/Lubricantes/Servicios Rápidos),
+// porque eso llega como un evento sobre la tarjeta -se reconcilia completa.
 //
 // No se intenta leer el diff exacto que manda el payload del webhook -la
 // granularidad de eventos de ClickUp para checklists no está garantizada-;
@@ -18,7 +25,7 @@
 // adivinara la URL podría inyectar datos falsos en el taller.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { respuestaJson, respuestaPreflight } from '../_shared/cors.ts'
-import { NOMBRE_CHECKLIST_POR_AREA, obtenerTarea } from '../_shared/clickup.ts'
+import { NOMBRE_CHECKLIST_POR_AREA, obtenerTarea, resolverCampos } from '../_shared/clickup.ts'
 import { enviarCorreo } from '../_shared/brevo.ts'
 
 // Nombres de estado que el cliente confirmó el 2026-09-15 (ver CHANGELOG).
@@ -34,6 +41,32 @@ const ESTADO_COMPRA_REPTOS = 'compra reptos'
 function textoObservacion(valor: string | null | undefined) {
   const limpio = (valor ?? '').trim()
   return limpio.length > 0 ? limpio : null
+}
+
+// La nota del técnico puede quedar en el campo personalizado "Observaciones"
+// de la subtarea (los campos de la lista están disponibles también en sus
+// subtareas, confirmado en pantalla el 2026-09-27) o, si no lo usan, en la
+// Descripción de la subtarea. Se prioriza el campo: es el mismo que ya usa
+// la tarjeta principal (CRM -> ClickUp) y no depende de que el técnico
+// escriba en el lugar "correcto".
+// deno-lint-ignore no-explicit-any
+async function observacionDesdeTarea(supabase: any, empresaId: string, tareaRemota: TareaRemota) {
+  const { data: config } = await supabase.from('clickup_config').select('campos').eq('empresa_id', empresaId).maybeSingle()
+  const campos = resolverCampos(config?.campos)
+  const campoObservaciones = tareaRemota.custom_fields?.find((campo) => campo.id === campos.ids.observaciones)
+  const valorCampo = typeof campoObservaciones?.value === 'string' ? campoObservaciones.value : null
+  return textoObservacion(valorCampo) ?? textoObservacion(tareaRemota.text_content ?? tareaRemota.description)
+}
+
+interface TareaRemota {
+  name: string
+  status?: { status?: string }
+  assignees?: { id: number; email: string }[]
+  parent: string | null
+  text_content?: string
+  description?: string
+  custom_fields?: { id: string; value?: unknown }[]
+  checklists?: { id: string; name: string; items: { id: string; name: string; resolved: boolean; assignee?: { email: string } }[] }[]
 }
 
 // Cada webhook de ClickUp trae su propio secreto: el de la lista real de Didial
@@ -103,16 +136,7 @@ Deno.serve(async (req) => {
       .eq('clickup_task_id', taskId)
       .maybeSingle()
 
-    const tareaRemota = (await obtenerTarea(taskId)) as {
-      name: string
-      status?: { status?: string }
-      assignees?: { id: number; email: string }[]
-      parent: string | null
-      text_content?: string
-      description?: string
-      checklists?: { id: string; name: string; items: { id: string; name: string; resolved: boolean; assignee?: { email: string } }[] }[]
-    }
-    const observacionRemota = textoObservacion(tareaRemota.text_content ?? tareaRemota.description)
+    const tareaRemota = (await obtenerTarea(taskId)) as TareaRemota
 
     // El asignado se cruza por correo contra nuestros propios usuarios, no
     // contra la lista de miembros de ClickUp: el correo ya viene en el
@@ -128,6 +152,9 @@ Deno.serve(async (req) => {
         ? tareaExistente.trabajos_taller[0]
         : tareaExistente.trabajos_taller
       const empresaId = trabajoDeLaTarea?.empresa_id as string | undefined
+      const observacionRemota = empresaId
+        ? await observacionDesdeTarea(supabase, empresaId, tareaRemota)
+        : textoObservacion(tareaRemota.text_content ?? tareaRemota.description)
 
       const { error: errorActualizar } = await supabase
         .from('tareas_taller')
@@ -243,6 +270,7 @@ Deno.serve(async (req) => {
         .maybeSingle()
 
       if (trabajoPadre) {
+        const observacionRemota = await observacionDesdeTarea(supabase, trabajoPadre.empresa_id, tareaRemota)
         const { data: nuevaTarea, error: errorInsercion } = await supabase
           .from('tareas_taller')
           .insert({
@@ -474,6 +502,25 @@ async function reconciliarChecklists(
           clickup_checklist_item_id: item.id,
         })
       }
+    }
+
+    // Ítem borrado en ClickUp -> se borra también en el CRM. Se compara solo
+    // contra los ítems que llegaron de ClickUp (clickup_checklist_item_id no
+    // nulo): un ítem cargado a mano en el CRM, sin ese vínculo, nunca se toca
+    // acá. Si el ítem ya estaba verificado y vinculado a bodega, borrarlo
+    // repone el stock solo (trigger reponer_stock_al_eliminar_item, 0053).
+    const idsPresentes = new Set(checklist.items.map((item) => item.id))
+    const { data: sincronizados } = await supabase
+      .from('ot_detalle')
+      .select('id, clickup_checklist_item_id')
+      .eq('trabajo_id', trabajoId)
+      .eq('area', area)
+      .not('clickup_checklist_item_id', 'is', null)
+    const aBorrar = (sincronizados ?? [])
+      .filter((fila: { clickup_checklist_item_id: string }) => !idsPresentes.has(fila.clickup_checklist_item_id))
+      .map((fila: { id: string }) => fila.id)
+    if (aBorrar.length > 0) {
+      await supabase.from('ot_detalle').delete().in('id', aBorrar)
     }
   }
 }

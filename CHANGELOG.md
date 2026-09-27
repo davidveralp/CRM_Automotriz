@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2026-09-27 — Eliminar ítems, código de bodega automático y correcciones al webhook de ClickUp (`0053_eliminar_items_y_codigo_bodega.sql`)
+
+**Qué se entrega:** tres correcciones sobre la conexión bidireccional con ClickUp y la carga de repuestos/lubricantes.
+
+- **Eliminar un ítem** (repuestos, lubricantes e insumos, servicios externos): faltaba la policy de `DELETE` en `ot_detalle` -RLS lo rechazaba en silencio aunque hubiera un botón-. Se agrega la policy (mismo criterio que insertar/editar) y un botón "Eliminar" con confirmación en cada fila. Si el ítem ya estaba verificado y vinculado a bodega, al eliminarlo se repone el stock solo (movimiento `devolucion`); `movimientos_stock.ot_detalle_id` pasa a `on delete set null` para no perder el historial.
+- **Código de bodega:** `ot_detalle.codigo` nunca se llenaba -por eso salía vacío en los documentos impresos-. Un trigger lo copia ahora desde `productos.codigo` al vincular un ítem a bodega (`0053`, con respaldo de los ítems ya existentes). En el formulario, el selector de producto muestra el código y, al elegirlo, autocompleta el detalle con el nombre del producto -evita duplicados como "Filtro de aceite" vinculado y sin vincular a la vez-.
+- **Observaciones del técnico:** se leían de la Descripción de la subtarea; en la práctica se escriben en el campo personalizado "Observaciones" (disponible también en subtareas). `clickup-webhook` ahora prioriza ese campo (vía `clickup_config.campos` de cada empresa) y usa la Descripción como respaldo.
+- **Borrar un ítem de checklist en ClickUp se refleja en el CRM:** `reconciliarChecklists` borra en `ot_detalle` los ítems sincronizados que ya no están en el checklist de ClickUp (mismo criterio de reposición de stock). Borrar una subtarea COMPLETA en ClickUp no se refleja -no hay evento `taskDeleted` suscrito-.
+- **Verificado en el navegador (demo, OT 5036 / PR UE 21):** el código de bodega aparece en la fila y en el selector; se eliminó el ítem duplicado sin vincular (el mismo caso mostrado por el cliente); al elegir un producto el detalle se autocompleta.
+
 ## 2026-09-27 — Observaciones del técnico (ClickUp -> CRM), para venta cruzada (`0052_observaciones_tecnico.sql`)
 
 **Qué se entrega:** lo que el técnico escribe en la Descripción de una subtarea de ClickUp (ej. "neumáticos con desgaste irregular") se ve en la OT del CRM, para que el asesor pueda ofrecerlo como venta cruzada.

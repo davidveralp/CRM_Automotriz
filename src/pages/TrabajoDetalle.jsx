@@ -96,6 +96,8 @@ function TrabajoDetalle() {
   const [productoDetalle, setProductoDetalle] = useState('')
   const [provistoPorCliente, setProvistoPorCliente] = useState(false)
   const [guardandoDetalle, setGuardandoDetalle] = useState(false)
+  const [confirmarEliminarDetalle, setConfirmarEliminarDetalle] = useState(null)
+  const [eliminandoDetalle, setEliminandoDetalle] = useState(false)
 
   const [generandoPresupuesto, setGenerandoPresupuesto] = useState(false)
   const [numeroDocumento, setNumeroDocumento] = useState('')
@@ -142,12 +144,12 @@ function TrabajoDetalle() {
         // NULL solos si el usuario no tiene tiene_acceso_montos().
         supabase
           .from('ot_detalle_con_permiso')
-          .select('id, area, tarea_taller_id, detalle, cantidad, costo_unitario, precio_unitario, total_linea, verificado, decision, motivo_rechazo, fecha_postergado, presupuesto_id, hallazgo_precio_referencial, producto_id, producto_nombre, producto_stock_actual, producto_unidad_medida, provisto_por_cliente')
+          .select('id, area, tarea_taller_id, codigo, detalle, cantidad, costo_unitario, precio_unitario, total_linea, verificado, decision, motivo_rechazo, fecha_postergado, presupuesto_id, hallazgo_precio_referencial, producto_id, producto_nombre, producto_stock_actual, producto_unidad_medida, provisto_por_cliente')
           .eq('trabajo_id', id)
           .order('creado_en'),
         supabase.from('presupuestos_taller').select('id, correlativo, estado, creado_en').eq('trabajo_id', id).order('creado_en', { ascending: false }),
         supabase.from('usuarios').select('id, nombre_completo').eq('rol', 'tecnico').eq('activo', true),
-        supabase.from('productos').select('id, nombre, stock_actual, unidad_medida').eq('activo', true).order('nombre'),
+        supabase.from('productos').select('id, codigo, nombre, stock_actual, unidad_medida').eq('activo', true).order('nombre'),
         supabase
           .from('observaciones_postventa')
           .select('id, texto, creado_en, usuarios(nombre_completo)')
@@ -254,6 +256,24 @@ function TrabajoDetalle() {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
     } finally {
       setAgregandoServicioCatalogo(false)
+    }
+  }
+
+  async function eliminarDetalle(itemId) {
+    setEliminandoDetalle(true)
+    setError(null)
+    try {
+      const { error: errorEliminar } = await supabase.from('ot_detalle').delete().eq('id', itemId)
+      if (errorEliminar) {
+        setError(errorEliminar.message)
+        return
+      }
+      setConfirmarEliminarDetalle(null)
+      await cargarTodo()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setEliminandoDetalle(false)
     }
   }
 
@@ -787,6 +807,7 @@ function TrabajoDetalle() {
                   return (
                     <tr key={item.id} className="border-t border-slate-100 align-top">
                       <td className="px-3 py-2 text-slate-800">
+                        {item.codigo && <span className="mr-1 font-mono text-xs text-slate-400">{item.codigo}</span>}
                         {item.detalle}
                         {tarea && (
                           <p className="text-xs text-slate-500">
@@ -856,6 +877,7 @@ function TrabajoDetalle() {
                           </>
                         ))}
                       <td className="px-3 py-2">
+                        <div className="flex items-start gap-1">
                         <select
                           value={item.decision}
                           disabled={bloqueada}
@@ -886,6 +908,31 @@ function TrabajoDetalle() {
                             className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-500"
                           />
                         )}
+                        </div>
+                        {!bloqueada &&
+                          (confirmarEliminarDetalle === item.id ? (
+                            <div className="mt-1 flex items-center gap-1 text-xs">
+                              <button
+                                type="button"
+                                disabled={eliminandoDetalle}
+                                onClick={() => eliminarDetalle(item.id)}
+                                className="rounded bg-red-600 px-1.5 py-0.5 font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                              >
+                                Confirmar
+                              </button>
+                              <button type="button" onClick={() => setConfirmarEliminarDetalle(null)} className="text-slate-500 hover:text-slate-700">
+                                Cancelar
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmarEliminarDetalle(item.id)}
+                              className="mt-1 text-xs text-slate-400 hover:text-red-600"
+                            >
+                              Eliminar
+                            </button>
+                          ))}
                       </td>
                     </tr>
                   )
@@ -935,12 +982,17 @@ function TrabajoDetalle() {
                   {!provistoPorCliente && productos.length > 0 && (
                     <select
                       value={productoDetalle}
-                      onChange={(evento) => setProductoDetalle(evento.target.value)}
+                      onChange={(evento) => {
+                        setProductoDetalle(evento.target.value)
+                        const elegido = productos.find((p) => p.id === evento.target.value)
+                        if (elegido) setDetalleTexto(elegido.nombre)
+                      }}
                       className="min-w-0 flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
                     >
                       <option value="">Sin vincular a bodega</option>
                       {productos.map((p) => (
                         <option key={p.id} value={p.id}>
+                          {p.codigo ? `${p.codigo} · ` : ''}
                           {p.nombre} (stock {p.stock_actual} {p.unidad_medida})
                         </option>
                       ))}
