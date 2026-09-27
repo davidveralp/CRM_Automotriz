@@ -1,5 +1,11 @@
 # Registro de cambios
 
+## 2026-09-26 — Enlaces directos que daban 404 en Vercel (`vercel.json`)
+
+**Qué se corrige:** abrir directamente `/login`, `/taller`, `/encuesta/...` o cualquier ruta que no fuera la raíz devolvía "404: Esta página no existe" en un dispositivo nuevo. El proyecto no tenía la regla de Vercel que manda todas las rutas a `index.html` para que las resuelva la app (React Router); solo la raíz funcionaba. Quien ya había abierto la app lo sorteaba gracias al service worker de la PWA. Afectaba también a los enlaces de las encuestas de postventa enviados a los clientes.
+
+- `vercel.json` con `rewrites: /(.*) -> /index.html`. Vercel sigue sirviendo primero los archivos reales (`/assets`, `/sw.js`, `/manifest`, logos).
+
 ## 2026-09-26 — Pantalla de inicio: "Sistema de gestión integral" y líneas con ondas (solo frontend)
 
 - **Texto:** bajo "Gestión del taller" ahora dice "Sistema de gestión integral" (antes "CRM de recepción, ventas y postventa.").
