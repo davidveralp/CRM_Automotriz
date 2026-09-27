@@ -1,6 +1,6 @@
 # Registro de cambios
 
-## 2026-09-27 — Columna de técnico con iniciales en Mano de obra, al estilo ClickUp (solo frontend)
+## 2026-09-27 — Columna de técnico con iniciales en Mano de obra, al estilo ClickUp (solo frontend) La columna va al final de la tabla, no al principio.
 
 **Qué se entrega:** en la pestaña Mano de obra de la OT, cada tarea tiene ahora una columna "Técnico" con un círculo de color y las iniciales de quien está a cargo, igual que el avatar de asignado en ClickUp; el nombre completo sale al pasar el mouse.
 

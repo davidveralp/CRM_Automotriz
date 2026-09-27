@@ -848,7 +848,6 @@ function TrabajoDetalle() {
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-500">
                 <tr>
-                  {esManoObra && <th className="px-3 py-2">Técnico</th>}
                   <th className="px-3 py-2">Detalle</th>
                   <th className="px-3 py-2">Cant.</th>
                   {!esManoObra && <th className="px-3 py-2">Verificado</th>}
@@ -856,6 +855,7 @@ function TrabajoDetalle() {
                   {tieneAccesoPrecioVenta && <th className="px-3 py-2">Precio</th>}
                   {tieneAccesoPrecioVenta && <th className="px-3 py-2">Total</th>}
                   <th className="px-3 py-2">Decisión</th>
+                  {esManoObra && <th className="px-3 py-2">Técnico</th>}
                 </tr>
               </thead>
               <tbody>
@@ -864,11 +864,6 @@ function TrabajoDetalle() {
                   const nombreTecnico = tarea ? tarea.usuarios?.nombre_completo || tarea.clickup_asignado_nombre || null : null
                   return (
                     <tr key={item.id} className="border-t border-slate-100 align-top">
-                      {esManoObra && (
-                        <td className="px-3 py-2">
-                          <AvatarTecnico nombre={nombreTecnico} />
-                        </td>
-                      )}
                       <td className="px-3 py-2 text-slate-800">
                         {item.codigo && <span className="mr-1 font-mono text-xs text-slate-400">{item.codigo}</span>}
                         {item.detalle}
@@ -997,6 +992,11 @@ function TrabajoDetalle() {
                             </button>
                           ))}
                       </td>
+                      {esManoObra && (
+                        <td className="px-3 py-2">
+                          <AvatarTecnico nombre={nombreTecnico} />
+                        </td>
+                      )}
                     </tr>
                   )
                 })}
