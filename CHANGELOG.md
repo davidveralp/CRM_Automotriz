@@ -1,5 +1,13 @@
 # Registro de cambios
 
+## 2026-09-27 — Columna de técnico con iniciales en Mano de obra, al estilo ClickUp (solo frontend)
+
+**Qué se entrega:** en la pestaña Mano de obra de la OT, cada tarea tiene ahora una columna "Técnico" con un círculo de color y las iniciales de quien está a cargo, igual que el avatar de asignado en ClickUp; el nombre completo sale al pasar el mouse.
+
+- `AvatarTecnico` (`TrabajoDetalle.jsx`): iniciales de nombre y apellido ("Felipe Codoceo" -> "FC"); si la tarea no cruzó con un usuario del CRM, usa las dos primeras letras del correo de ClickUp guardado en `clickup_asignado_nombre`; sin asignar, un círculo punteado con "?".
+- El color de cada técnico sale de un hash de su nombre (paleta fija de 12 colores): la misma persona siempre tiene el mismo color, sin guardar nada nuevo.
+- Verificado en el navegador (demo): "FC" para Felipe Codoceo y "IG" para el correo sin cruce (`ignaciohdidial@gmail.com`).
+
 ## 2026-09-27 — Corrige el cruce de técnico entre empresas (`clickup-webhook`, solo código)
 
 **Qué se corrige:** al asignar un técnico a una subtarea en ClickUp, el CRM cruzaba el correo del asignado contra `usuarios` sin filtrar por empresa. Si la misma persona usa el mismo correo de ClickUp para trabajar tanto en la lista real de Didial como en la lista demo, el cruce podía encontrar al usuario de la OTRA empresa y guardarle su id en `tareas_taller.tecnico_id` -una tarea de la demo terminaba "asignada" a un técnico del tenant real (o viceversa)-. En la app se veía como "Sin asignar", porque ese técnico no pertenece a la empresa de la OT y no aparece en su listado.

@@ -51,6 +51,62 @@ function precioSeAlejaDelReferencial(item) {
   return diferencia > UMBRAL_DIVERGENCIA_PRECIO
 }
 
+// Paleta fija (clases completas, no armadas con template strings) para que
+// Tailwind las detecte. El color de cada técnico sale de un hash de su
+// nombre: la misma persona siempre queda con el mismo color, sin guardar nada.
+const COLORES_AVATAR = [
+  'bg-red-500',
+  'bg-orange-500',
+  'bg-amber-500',
+  'bg-lime-500',
+  'bg-emerald-500',
+  'bg-teal-500',
+  'bg-cyan-500',
+  'bg-blue-500',
+  'bg-indigo-500',
+  'bg-violet-500',
+  'bg-fuchsia-500',
+  'bg-pink-500',
+]
+
+function colorAvatar(texto) {
+  let hash = 0
+  for (let i = 0; i < texto.length; i++) hash = (hash * 31 + texto.charCodeAt(i)) % COLORES_AVATAR.length
+  return COLORES_AVATAR[hash]
+}
+
+// Iniciales al estilo ClickUp: primera letra del nombre y del apellido. Sin
+// cruce con un usuario del CRM, tarea.clickup_asignado_nombre trae el correo
+// de ClickUp -se usan sus dos primeras letras como respaldo.
+function inicialesTecnico(nombre) {
+  if (nombre.includes('@')) return nombre.slice(0, 2).toUpperCase()
+  const partes = nombre.trim().split(/\s+/)
+  return partes.length === 1 ? partes[0].slice(0, 2).toUpperCase() : (partes[0][0] + partes[partes.length - 1][0]).toUpperCase()
+}
+
+// Columna "Técnico" de Mano de obra: un círculo con las iniciales, igual que
+// el avatar de asignado de ClickUp. El nombre completo va en el title.
+function AvatarTecnico({ nombre }) {
+  if (!nombre) {
+    return (
+      <span
+        title="Sin asignar"
+        className="grid h-7 w-7 place-items-center rounded-full border border-dashed border-slate-300 text-[10px] font-semibold text-slate-400"
+      >
+        ?
+      </span>
+    )
+  }
+  return (
+    <span
+      title={nombre}
+      className={`grid h-7 w-7 place-items-center rounded-full text-[10px] font-semibold text-white ${colorAvatar(nombre)}`}
+    >
+      {inicialesTecnico(nombre)}
+    </span>
+  )
+}
+
 function nombreCliente(cliente) {
   if (!cliente) return '—'
   return cliente.razon_social || [cliente.nombre, cliente.apellido].filter(Boolean).join(' ')
@@ -792,6 +848,7 @@ function TrabajoDetalle() {
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-500">
                 <tr>
+                  {esManoObra && <th className="px-3 py-2">Técnico</th>}
                   <th className="px-3 py-2">Detalle</th>
                   <th className="px-3 py-2">Cant.</th>
                   {!esManoObra && <th className="px-3 py-2">Verificado</th>}
@@ -804,14 +861,20 @@ function TrabajoDetalle() {
               <tbody>
                 {itemsPestana.map((item) => {
                   const tarea = esManoObra ? tareas.find((t) => t.id === item.tarea_taller_id) : null
+                  const nombreTecnico = tarea ? tarea.usuarios?.nombre_completo || tarea.clickup_asignado_nombre || null : null
                   return (
                     <tr key={item.id} className="border-t border-slate-100 align-top">
+                      {esManoObra && (
+                        <td className="px-3 py-2">
+                          <AvatarTecnico nombre={nombreTecnico} />
+                        </td>
+                      )}
                       <td className="px-3 py-2 text-slate-800">
                         {item.codigo && <span className="mr-1 font-mono text-xs text-slate-400">{item.codigo}</span>}
                         {item.detalle}
                         {tarea && (
                           <p className="text-xs text-slate-500">
-                            {tarea.usuarios?.nombre_completo || tarea.clickup_asignado_nombre || 'Sin asignar'} · {tarea.estado}
+                            {nombreTecnico || 'Sin asignar'} · {tarea.estado}
                           </p>
                         )}
                         {tarea?.observaciones_tecnico && (
@@ -939,7 +1002,7 @@ function TrabajoDetalle() {
                 })}
                 {itemsPestana.length === 0 && (
                   <tr>
-                    <td colSpan={3 + (esManoObra ? 0 : 1) + columnasMontos} className="px-3 py-6 text-center text-slate-400">
+                    <td colSpan={4 + columnasMontos} className="px-3 py-6 text-center text-slate-400">
                       {esManoObra ? 'Sin tareas de mano de obra todavía.' : `Sin ${ETIQUETA_AREA[pestana].toLowerCase()} todavía.`}
                     </td>
                   </tr>
