@@ -138,14 +138,19 @@ Deno.serve(async (req) => {
 
     const tareaRemota = (await obtenerTarea(taskId)) as TareaRemota
 
-    // El asignado se cruza por correo contra nuestros propios usuarios, no
-    // contra la lista de miembros de ClickUp: el correo ya viene en el
-    // objeto assignee de la tarea, así que no hace falta la llamada extra a
-    // obtenerMiembrosEquipo() (esa sirve solo para el sentido CRM -> ClickUp).
+    // El asignado se cruza por correo contra nuestros propios usuarios -el
+    // correo ya viene en el objeto assignee de la tarea, así que no hace
+    // falta la llamada extra a obtenerMiembrosEquipo() (esa sirve solo para
+    // el sentido CRM -> ClickUp). SIEMPRE acotado a la empresa de la OT: el
+    // mismo humano puede tener acceso a la lista real y a la demo con la
+    // MISMA cuenta de ClickUp, y sin este filtro el cruce podía encontrar al
+    // usuario de la otra empresa y colgarle una tarea de una a la otra.
     const asignado = tareaRemota.assignees?.[0]
-    const usuarioAsignado = asignado
-      ? await supabase.from('usuarios').select('id').eq('correo', asignado.email).maybeSingle()
-      : null
+    // deno-lint-ignore no-explicit-any
+    async function usuarioAsignadoEnEmpresa(empresaId: string | undefined): Promise<any> {
+      if (!asignado || !empresaId) return null
+      return await supabase.from('usuarios').select('id').eq('correo', asignado.email).eq('empresa_id', empresaId).maybeSingle()
+    }
 
     if (tareaExistente) {
       const trabajoDeLaTarea = Array.isArray(tareaExistente.trabajos_taller)
@@ -155,6 +160,7 @@ Deno.serve(async (req) => {
       const observacionRemota = empresaId
         ? await observacionDesdeTarea(supabase, empresaId, tareaRemota)
         : textoObservacion(tareaRemota.text_content ?? tareaRemota.description)
+      const usuarioAsignado = await usuarioAsignadoEnEmpresa(empresaId)
 
       const { error: errorActualizar } = await supabase
         .from('tareas_taller')
@@ -271,6 +277,7 @@ Deno.serve(async (req) => {
 
       if (trabajoPadre) {
         const observacionRemota = await observacionDesdeTarea(supabase, trabajoPadre.empresa_id, tareaRemota)
+        const usuarioAsignado = await usuarioAsignadoEnEmpresa(trabajoPadre.empresa_id)
         const { data: nuevaTarea, error: errorInsercion } = await supabase
           .from('tareas_taller')
           .insert({

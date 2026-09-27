@@ -1,5 +1,13 @@
 # Registro de cambios
 
+## 2026-09-27 — Corrige el cruce de técnico entre empresas (`clickup-webhook`, solo código)
+
+**Qué se corrige:** al asignar un técnico a una subtarea en ClickUp, el CRM cruzaba el correo del asignado contra `usuarios` sin filtrar por empresa. Si la misma persona usa el mismo correo de ClickUp para trabajar tanto en la lista real de Didial como en la lista demo, el cruce podía encontrar al usuario de la OTRA empresa y guardarle su id en `tareas_taller.tecnico_id` -una tarea de la demo terminaba "asignada" a un técnico del tenant real (o viceversa)-. En la app se veía como "Sin asignar", porque ese técnico no pertenece a la empresa de la OT y no aparece en su listado.
+
+- El cruce por correo ahora exige `usuarios.empresa_id = empresa de la OT`. Si el correo no tiene cuenta en esa empresa, se guarda como texto (`clickup_asignado_nombre`), igual que cuando no cruza con nadie.
+- Detectado y corregido en la demo (OT 5036 / PR UE 21): 1 fila afectada, sin más casos tras auditar el resto.
+- Verificado en el navegador: la tarea pasó de "Sin asignar" a mostrar el correo de ClickUp como texto.
+
 ## 2026-09-27 — Eliminar ítems, código de bodega automático y correcciones al webhook de ClickUp (`0053_eliminar_items_y_codigo_bodega.sql`)
 
 **Qué se entrega:** tres correcciones sobre la conexión bidireccional con ClickUp y la carga de repuestos/lubricantes.
