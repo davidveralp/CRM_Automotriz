@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2026-09-27 — Observaciones del técnico (ClickUp -> CRM), para venta cruzada (`0052_observaciones_tecnico.sql`)
+
+**Qué se entrega:** lo que el técnico escribe en la Descripción de una subtarea de ClickUp (ej. "neumáticos con desgaste irregular") se ve en la OT del CRM, para que el asesor pueda ofrecerlo como venta cruzada.
+
+- `tareas_taller.observaciones_tecnico`: se actualiza en cada evento del webhook con el texto que trae ClickUp (`text_content`, o `description` si no viene). No es un historial: refleja el texto actual de la subtarea.
+- **Notificación al asesor** (`observacion_tecnico`) cuando aparece una observación nueva o cambia; no se repite mientras el texto siga igual.
+- **En la OT:** cada tarea de mano de obra muestra su observación en un recuadro ámbar, debajo del técnico y el estado.
+- **Alcance:** solo la Descripción de la subtarea. No lee comentarios ni campos personalizados de subtareas (ClickUp no permite campos personalizados en subtareas de listas no compartidas) ni checklists dentro de una subtarea.
+- **Demo:** una observación de ejemplo en la OT de PRUE04.
+
 ## 2026-09-26 — Enlaces directos que daban 404 en Vercel (`vercel.json`)
 
 **Qué se corrige:** abrir directamente `/login`, `/taller`, `/encuesta/...` o cualquier ruta que no fuera la raíz devolvía "404: Esta página no existe" en un dispositivo nuevo. El proyecto no tenía la regla de Vercel que manda todas las rutas a `index.html` para que las resuelva la app (React Router); solo la raíz funcionaba. Quien ya había abierto la app lo sorteaba gracias al service worker de la PWA. Afectaba también a los enlaces de las encuestas de postventa enviados a los clientes.

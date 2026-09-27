@@ -29,6 +29,13 @@ const ESTADO_RETROCESO = 'retroceso'
 const ESTADO_LISTO_PARA_ENTREGA = 'listo para entrega'
 const ESTADO_COMPRA_REPTOS = 'compra reptos'
 
+// Notas libres de una subtarea con esta forma no aportan nada nuevo (ClickUp
+// deja la Descripción con este texto vacío por defecto en algunos casos).
+function textoObservacion(valor: string | null | undefined) {
+  const limpio = (valor ?? '').trim()
+  return limpio.length > 0 ? limpio : null
+}
+
 // Cada webhook de ClickUp trae su propio secreto: el de la lista real de Didial
 // (CLICKUP_WEBHOOK_SECRET) y el de la lista de la demo (CLICKUP_WEBHOOK_SECRET_DEMO,
 // opcional). La firma es válida si coincide con cualquiera de los configurados;
@@ -92,7 +99,7 @@ Deno.serve(async (req) => {
     // Caso 1: el evento es sobre una subtarea de mano de obra que ya conocemos.
     const { data: tareaExistente } = await supabase
       .from('tareas_taller')
-      .select('id, trabajo_id, tecnico_id, trabajos_taller(empresa_id)')
+      .select('id, trabajo_id, observaciones_tecnico, trabajos_taller(empresa_id, numero_ot, asesor_id, vehiculos(patente))')
       .eq('clickup_task_id', taskId)
       .maybeSingle()
 
@@ -101,8 +108,11 @@ Deno.serve(async (req) => {
       status?: { status?: string }
       assignees?: { id: number; email: string }[]
       parent: string | null
+      text_content?: string
+      description?: string
       checklists?: { id: string; name: string; items: { id: string; name: string; resolved: boolean; assignee?: { email: string } }[] }[]
     }
+    const observacionRemota = textoObservacion(tareaRemota.text_content ?? tareaRemota.description)
 
     // El asignado se cruza por correo contra nuestros propios usuarios, no
     // contra la lista de miembros de ClickUp: el correo ya viene en el
@@ -114,10 +124,10 @@ Deno.serve(async (req) => {
       : null
 
     if (tareaExistente) {
-      const empresaId = (Array.isArray(tareaExistente.trabajos_taller)
+      const trabajoDeLaTarea = Array.isArray(tareaExistente.trabajos_taller)
         ? tareaExistente.trabajos_taller[0]
         : tareaExistente.trabajos_taller
-      )?.empresa_id as string | undefined
+      const empresaId = trabajoDeLaTarea?.empresa_id as string | undefined
 
       const { error: errorActualizar } = await supabase
         .from('tareas_taller')
@@ -126,12 +136,27 @@ Deno.serve(async (req) => {
           estado: tareaRemota.status?.status ?? 'agenda',
           tecnico_id: usuarioAsignado?.data?.id ?? null,
           clickup_asignado_nombre: usuarioAsignado?.data ? null : asignado?.email ?? null,
+          observaciones_tecnico: observacionRemota,
         })
         .eq('id', tareaExistente.id)
 
       if (errorActualizar) {
         await registrarError(empresaId ?? null, tareaExistente.trabajo_id, 'actualizar_tarea_taller', errorActualizar)
         return respuestaJson({ error: { mensaje: errorActualizar.message } }, 500)
+      }
+
+      // Aviso al asesor solo cuando la observación es nueva o cambió -evita
+      // repetir el aviso en cada evento mientras el texto sigue igual.
+      if (observacionRemota && observacionRemota !== tareaExistente.observaciones_tecnico && empresaId) {
+        await avisarObservacionTecnico(supabase, {
+          empresaId,
+          trabajoId: tareaExistente.trabajo_id,
+          numeroOt: trabajoDeLaTarea?.numero_ot,
+          asesorId: trabajoDeLaTarea?.asesor_id ?? null,
+          patente: (Array.isArray(trabajoDeLaTarea?.vehiculos) ? trabajoDeLaTarea?.vehiculos[0] : trabajoDeLaTarea?.vehiculos)?.patente,
+          observacion: observacionRemota,
+          registrarError,
+        })
       }
 
       return respuestaJson({ data: { actualizada: 'tarea_taller', id: tareaExistente.id } })
@@ -227,6 +252,7 @@ Deno.serve(async (req) => {
             clickup_task_id: taskId,
             tecnico_id: usuarioAsignado?.data?.id ?? null,
             clickup_asignado_nombre: usuarioAsignado?.data ? null : asignado?.email ?? null,
+            observaciones_tecnico: observacionRemota,
           })
           .select('id')
           .single()
@@ -234,6 +260,23 @@ Deno.serve(async (req) => {
         if (errorInsercion) {
           await registrarError(trabajoPadre.empresa_id, trabajoPadre.id, 'importar_tarea_nueva', errorInsercion)
           return respuestaJson({ error: { mensaje: errorInsercion.message } }, 500)
+        }
+
+        if (observacionRemota) {
+          const { data: trabajoConDatos } = await supabase
+            .from('trabajos_taller')
+            .select('numero_ot, asesor_id, vehiculos(patente)')
+            .eq('id', trabajoPadre.id)
+            .maybeSingle()
+          await avisarObservacionTecnico(supabase, {
+            empresaId: trabajoPadre.empresa_id,
+            trabajoId: trabajoPadre.id,
+            numeroOt: trabajoConDatos?.numero_ot,
+            asesorId: trabajoConDatos?.asesor_id ?? null,
+            patente: (Array.isArray(trabajoConDatos?.vehiculos) ? trabajoConDatos?.vehiculos[0] : trabajoConDatos?.vehiculos)?.patente,
+            observacion: observacionRemota,
+            registrarError,
+          })
         }
 
         return respuestaJson({ data: { importada: 'tarea_taller', id: nuevaTarea.id } })
@@ -355,6 +398,36 @@ async function crearNotificacionCompraReptos(
     mensaje: `${vehiculo?.patente ?? 'Vehículo'} · OT ${trabajo.numero_ot} quedó en "Compra reptos": faltan repuestos por comprar.`,
   })
   if (error) await registrarError(trabajo.empresa_id, trabajo.id, 'notificacion_compra_reptos', error)
+}
+
+// Avisa al asesor de la OT que un técnico dejó una observación en una
+// subtarea -puede señalar una venta cruzada (ej. "neumáticos gastados",
+// "batería con signos de falla") que conviene ofrecer al cliente.
+async function avisarObservacionTecnico(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  datos: {
+    empresaId: string
+    trabajoId: string
+    numeroOt?: number
+    asesorId: string | null
+    patente?: string
+    observacion: string
+    registrarError: (empresaId: string | null, trabajoId: string | null, operacion: string, error: unknown) => Promise<void>
+  }
+) {
+  if (!datos.asesorId) return
+
+  const resumen = datos.observacion.length > 200 ? `${datos.observacion.slice(0, 200)}…` : datos.observacion
+  const { error } = await supabase.from('notificaciones').insert({
+    empresa_id: datos.empresaId,
+    tipo: 'observacion_tecnico',
+    trabajo_id: datos.trabajoId,
+    usuario_destino_id: datos.asesorId,
+    titulo: 'Observación del técnico',
+    mensaje: `${datos.patente ?? 'Vehículo'} · OT ${datos.numeroOt ?? ''}: ${resumen}`,
+  })
+  if (error) await datos.registrarError(datos.empresaId, datos.trabajoId, 'notificacion_observacion_tecnico', error)
 }
 
 // Compara los checklists que trae ClickUp contra ot_detalle: marca

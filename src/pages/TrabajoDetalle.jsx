@@ -135,7 +135,7 @@ function TrabajoDetalle() {
           .maybeSingle(),
         supabase
           .from('tareas_taller')
-          .select('id, descripcion, estado, tecnico_id, clickup_asignado_nombre, usuarios(nombre_completo)')
+          .select('id, descripcion, estado, tecnico_id, clickup_asignado_nombre, observaciones_tecnico, usuarios(nombre_completo)')
           .eq('trabajo_id', id)
           .order('orden'),
         // Siempre por la vista, nunca por la tabla: acá costo/precio salen en
@@ -791,6 +791,11 @@ function TrabajoDetalle() {
                         {tarea && (
                           <p className="text-xs text-slate-500">
                             {tarea.usuarios?.nombre_completo || tarea.clickup_asignado_nombre || 'Sin asignar'} · {tarea.estado}
+                          </p>
+                        )}
+                        {tarea?.observaciones_tecnico && (
+                          <p className="mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900" title="Escrita por el técnico en ClickUp: puede indicar una venta cruzada para ofrecer al cliente.">
+                            <span className="font-semibold">Observación del técnico:</span> {tarea.observaciones_tecnico}
                           </p>
                         )}
                         {item.producto_nombre && (
