@@ -19,10 +19,15 @@ alter table public.notificaciones
 
 comment on column public.notificaciones.tarea_taller_id is 'Tarea puntual de mano de obra a la que se refiere (solo tarea_asignada). Permite resolver la notificación de ESA tarea sin tocar otras del mismo técnico en la misma OT.';
 
+-- Lista completa tal como quedó en 0052 (última vez que se tocó este check)
+-- más 'tarea_asignada': quitar cualquiera de las anteriores rompería filas
+-- ya guardadas con ese tipo, como pasó al probar esta migración la primera vez.
 alter table public.notificaciones drop constraint if exists notificaciones_tipo_check;
 alter table public.notificaciones add constraint notificaciones_tipo_check check (tipo in (
   'presupuesto_pendiente', 'encuesta_negativa', 'cita_nueva',
-  'listo_para_entrega', 'compra_reptos_pendiente', 'tarea_asignada'
+  'listo_para_entrega', 'compra_reptos_pendiente', 'whatsapp_desconectado',
+  'repuesto_pendiente_presupuesto', 'descuento_pendiente', 'descuento_resuelto',
+  'observacion_tecnico', 'tarea_asignada'
 ));
 
 -- ---------------------------------------------------------------------------
