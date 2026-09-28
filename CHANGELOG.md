@@ -1,5 +1,11 @@
 # Registro de cambios
 
+## 2026-09-28 — El check de la tarea es el control para terminarla, y exige observación
+
+- Se quitó el botón "Marcar ejecutada" aparte: ahora el círculo/check a la izquierda de cada subtarea ES el control -tocarlo abre el formulario de observación-, tanto en el detalle del Kanban como en Trabajos → Mano de obra.
+- **Nueva regla:** no se puede marcar una tarea como ejecutada sin escribir antes una observación. "Guardar y marcar ejecutada" queda bloqueado (con aviso en rojo) hasta que haya texto; "Solo guardar" sigue disponible para guardar la observación sin cerrar la tarea todavía. Se valida también en el servidor (`clickup-tarea`, acción `completar`), no solo en el formulario.
+- Probado de punta a punta contra la demo real: tocar el check sin texto bloquea, con texto guarda la observación y marca la subtarea ejecutada.
+
 ## 2026-09-28 — Ajuste: el detalle de la OT no debía tapar el menú ni la barra superior
 
 - El detalle de la tarjeta (0061) quedó primero como un overlay `fixed inset-0` que cubría toda la pantalla, menú incluido -no era lo pedido-. Ahora reemplaza el tablero dentro del mismo espacio de contenido (como ya hacía el toggle Plano/Kanban), sin tapar el menú lateral ni la barra superior; un botón "← Volver al tablero" reemplaza a la X.

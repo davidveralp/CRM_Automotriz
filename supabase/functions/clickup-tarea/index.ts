@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
 
     const { data: tarea } = await admin
       .from('tareas_taller')
-      .select('id, descripcion, tecnico_id, clickup_task_id, trabajo_id, trabajos_taller!inner(id, empresa_id, numero_ot, estado, vehiculos(patente))')
+      .select('id, descripcion, tecnico_id, clickup_task_id, trabajo_id, observaciones_tecnico, trabajos_taller!inner(id, empresa_id, numero_ot, estado, vehiculos(patente))')
       .eq('id', cuerpo.tarea_taller_id)
       .eq('trabajos_taller.empresa_id', empresaId)
       .maybeSingle()
@@ -144,6 +144,15 @@ Deno.serve(async (req) => {
     }
 
     if (cuerpo.accion === 'completar') {
+      // Sin observación no se puede terminar la tarea (regla del cliente,
+      // 2026-09-28): se valida acá también, no solo en el formulario -el
+      // frontend siempre guarda la observación primero, con la acción
+      // "observacion" (esa sí la empuja a ClickUp), y recién después llama a
+      // "completar"-, para que no se pueda saltar llamando a la función directo.
+      if (!(tarea.observaciones_tecnico ?? '').trim()) {
+        return respuestaJson({ error: { mensaje: 'Escribe una observación antes de marcar la tarea como ejecutada.' } }, 422)
+      }
+
       let nombreEstado: string | null = null
       if (tarea.clickup_task_id) {
         const { data: estados } = await admin

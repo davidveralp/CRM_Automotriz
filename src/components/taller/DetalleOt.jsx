@@ -290,11 +290,22 @@ function DetalleOt({ trabajoId, usuario, tecnicos, nombreTecnico, onCerrar }) {
 // propio técnico asignado). Todo empuja a ClickUp por su cuenta -ver
 // clickup-tarea-, así que acá solo se llama y se refleja el resultado.
 function FilaSubtarea({ tarea, puedeAsignar, puedeEjecutar, listaTecnicos, nombreTecnico, onAsignar, onCompletar, onGuardarObservacion }) {
+  // El check de la izquierda ES el control para terminar la tarea -no un
+  // botón aparte-. Al tocarlo se pide la observación (obligatoria: sin
+  // observación no se puede terminar) y recién ahí se guarda y se completa
+  // en un solo paso.
   const [editandoObs, setEditandoObs] = useState(false)
   const [textoObs, setTextoObs] = useState(tarea.observaciones_tecnico || '')
   const [guardando, setGuardando] = useState(false)
+  const [faltaObservacion, setFaltaObservacion] = useState(false)
 
-  async function guardar(evento) {
+  function tocarCheck() {
+    if (tarea.completada || !puedeEjecutar) return
+    setEditandoObs(true)
+    setFaltaObservacion(false)
+  }
+
+  async function guardarObservacion(evento) {
     evento.preventDefault()
     setGuardando(true)
     await onGuardarObservacion(textoObs.trim() || null)
@@ -302,10 +313,37 @@ function FilaSubtarea({ tarea, puedeAsignar, puedeEjecutar, listaTecnicos, nombr
     setEditandoObs(false)
   }
 
+  async function guardarYCompletar() {
+    const texto = textoObs.trim()
+    if (!texto) {
+      setFaltaObservacion(true)
+      return
+    }
+    setGuardando(true)
+    await onGuardarObservacion(texto)
+    await onCompletar()
+    setGuardando(false)
+    setEditandoObs(false)
+  }
+
   return (
     <div className={`rounded border p-2 ${tarea.completada ? 'border-slate-200 bg-slate-50' : 'border-slate-200'}`}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className={tarea.completada ? 'text-emerald-600' : 'text-slate-300'}>{tarea.completada ? '✓' : '○'}</span>
+        <button
+          type="button"
+          onClick={tocarCheck}
+          disabled={tarea.completada || !puedeEjecutar}
+          title={tarea.completada ? 'Ejecutada' : puedeEjecutar ? 'Marcar ejecutada' : undefined}
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-sm ${
+            tarea.completada
+              ? 'border-emerald-600 bg-emerald-600 text-white'
+              : puedeEjecutar
+                ? 'border-slate-300 text-transparent hover:border-emerald-500'
+                : 'cursor-default border-slate-200 text-transparent'
+          }`}
+        >
+          ✓
+        </button>
         <span className={`text-sm ${tarea.completada ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{tarea.descripcion}</span>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -325,41 +363,52 @@ function FilaSubtarea({ tarea, puedeAsignar, puedeEjecutar, listaTecnicos, nombr
           ) : (
             <span className="text-xs text-slate-500">{(tarea.tecnico_id ? nombreTecnico(tarea.tecnico_id) : tarea.clickup_asignado_nombre) || 'Sin asignar'}</span>
           )}
-
-          {puedeEjecutar && !tarea.completada && (
-            <button type="button" onClick={onCompletar} className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700">
-              Marcar ejecutada
-            </button>
-          )}
         </div>
       </div>
 
       {puedeEjecutar ? (
         editandoObs ? (
-          <form onSubmit={guardar} className="mt-1.5 flex items-start gap-1.5">
-            <textarea
-              value={textoObs}
-              onChange={(evento) => setTextoObs(evento.target.value)}
-              rows={2}
-              autoFocus
-              className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
-              placeholder="Observación de la tarea (ej. venta cruzada, hallazgo)"
-            />
-            <div className="flex shrink-0 flex-col gap-1">
-              <button type="submit" disabled={guardando} className="rounded bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50">
-                Guardar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setTextoObs(tarea.observaciones_tecnico || '')
-                  setEditandoObs(false)
+          <form onSubmit={guardarObservacion} className="mt-1.5">
+            <div className="flex items-start gap-1.5">
+              <textarea
+                value={textoObs}
+                onChange={(evento) => {
+                  setTextoObs(evento.target.value)
+                  if (evento.target.value.trim()) setFaltaObservacion(false)
                 }}
-                className="text-xs text-slate-500 underline"
-              >
-                Cancelar
-              </button>
+                rows={2}
+                autoFocus
+                className={`w-full rounded border px-2 py-1 text-xs ${faltaObservacion ? 'border-red-400' : 'border-slate-300'}`}
+                placeholder="Observación de la tarea (ej. venta cruzada, hallazgo)"
+              />
+              <div className="flex shrink-0 flex-col gap-1">
+                {!tarea.completada && (
+                  <button
+                    type="button"
+                    disabled={guardando}
+                    onClick={guardarYCompletar}
+                    className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    Guardar y marcar ejecutada
+                  </button>
+                )}
+                <button type="submit" disabled={guardando} className="rounded bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50">
+                  Solo guardar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTextoObs(tarea.observaciones_tecnico || '')
+                    setEditandoObs(false)
+                    setFaltaObservacion(false)
+                  }}
+                  className="text-xs text-slate-500 underline"
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
+            {faltaObservacion && <p className="mt-1 text-xs text-red-600">Escribe una observación para poder marcar la tarea como ejecutada.</p>}
           </form>
         ) : (
           <button type="button" onClick={() => setEditandoObs(true)} className="mt-1 block text-left text-xs text-slate-500 hover:text-slate-800">

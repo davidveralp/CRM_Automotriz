@@ -112,10 +112,20 @@ function AvatarTecnico({ nombre }) {
 // se muestra a quien puede ejecutarla: el jefe de taller/admin/socia (cualquier
 // tarea) o el propio técnico asignado (solo la suya). Empuja el cambio a
 // ClickUp también -ver clickup-tarea-.
-function ControlTareaTecnico({ tarea, onCompletar, onGuardarObservacion }) {
+// El check de la izquierda ES el control para terminar la tarea -no un botón
+// aparte-. Al tocarlo se pide la observación (obligatoria: sin observación no
+// se puede terminar) y recién ahí se guarda y se completa en un solo paso.
+function ControlTareaTecnico({ tarea, nombreTecnico, onCompletar, onGuardarObservacion }) {
   const [editando, setEditando] = useState(false)
   const [texto, setTexto] = useState(tarea.observaciones_tecnico || '')
   const [guardando, setGuardando] = useState(false)
+  const [faltaObservacion, setFaltaObservacion] = useState(false)
+
+  function tocarCheck() {
+    if (tarea.completada) return
+    setEditando(true)
+    setFaltaObservacion(false)
+  }
 
   async function guardar(evento) {
     evento.preventDefault()
@@ -125,46 +135,86 @@ function ControlTareaTecnico({ tarea, onCompletar, onGuardarObservacion }) {
     setEditando(false)
   }
 
+  async function guardarYCompletar() {
+    const valor = texto.trim()
+    if (!valor) {
+      setFaltaObservacion(true)
+      return
+    }
+    setGuardando(true)
+    await onGuardarObservacion(valor)
+    await onCompletar()
+    setGuardando(false)
+    setEditando(false)
+  }
+
   return (
     <div className="mt-1">
+      <p className="flex items-center gap-1.5 text-xs text-slate-500">
+        <button
+          type="button"
+          onClick={tocarCheck}
+          disabled={tarea.completada}
+          title={tarea.completada ? 'Ejecutada' : 'Marcar ejecutada'}
+          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] ${
+            tarea.completada ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 text-transparent hover:border-emerald-500'
+          }`}
+        >
+          ✓
+        </button>
+        {nombreTecnico || 'Sin asignar'} · {tarea.estado}
+      </p>
+
       {editando ? (
-        <form onSubmit={guardar} className="flex items-start gap-1.5">
-          <textarea
-            value={texto}
-            onChange={(evento) => setTexto(evento.target.value)}
-            rows={2}
-            autoFocus
-            className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
-            placeholder="Observación de la tarea (ej. venta cruzada, hallazgo)"
-          />
-          <div className="flex shrink-0 flex-col gap-1">
-            <button type="submit" disabled={guardando} className="rounded bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50">
-              Guardar
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setTexto(tarea.observaciones_tecnico || '')
-                setEditando(false)
+        <form onSubmit={guardar} className="mt-1">
+          <div className="flex items-start gap-1.5">
+            <textarea
+              value={texto}
+              onChange={(evento) => {
+                setTexto(evento.target.value)
+                if (evento.target.value.trim()) setFaltaObservacion(false)
               }}
-              className="text-xs text-slate-500 underline"
-            >
-              Cancelar
-            </button>
+              rows={2}
+              autoFocus
+              className={`w-full rounded border px-2 py-1 text-xs ${faltaObservacion ? 'border-red-400' : 'border-slate-300'}`}
+              placeholder="Observación de la tarea (ej. venta cruzada, hallazgo)"
+            />
+            <div className="flex shrink-0 flex-col gap-1">
+              {!tarea.completada && (
+                <button
+                  type="button"
+                  disabled={guardando}
+                  onClick={guardarYCompletar}
+                  className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  Guardar y marcar ejecutada
+                </button>
+              )}
+              <button type="submit" disabled={guardando} className="rounded bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50">
+                Solo guardar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTexto(tarea.observaciones_tecnico || '')
+                  setEditando(false)
+                  setFaltaObservacion(false)
+                }}
+                className="text-xs text-slate-500 underline"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
+          {faltaObservacion && <p className="mt-1 text-xs text-red-600">Escribe una observación para poder marcar la tarea como ejecutada.</p>}
         </form>
       ) : (
-        <button type="button" onClick={() => setEditando(true)} className="block text-left text-xs text-slate-500 hover:text-slate-800">
+        <button type="button" onClick={() => setEditando(true)} className="mt-1 block text-left text-xs text-slate-500 hover:text-slate-800">
           {tarea.observaciones_tecnico ? (
             <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">{tarea.observaciones_tecnico}</span>
           ) : (
             <span className="underline">Agregar observación</span>
           )}
-        </button>
-      )}
-      {!tarea.completada && (
-        <button type="button" onClick={onCompletar} className="mt-1 rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700">
-          Marcar ejecutada
         </button>
       )}
     </div>
@@ -1028,19 +1078,22 @@ function TrabajoDetalle() {
                 {itemsPestana.map((item) => {
                   const tarea = esManoObra ? tareas.find((t) => t.id === item.tarea_taller_id) : null
                   const nombreTecnico = tarea ? tarea.usuarios?.nombre_completo || tarea.clickup_asignado_nombre || null : null
+                  const puedeEjecutarTarea =
+                    tarea && !bloqueada && (ROLES_QUE_ASIGNAN_TECNICO.includes(usuario?.rol) || tarea.tecnico_id === usuario?.id)
                   return (
                     <tr key={item.id} className="border-t border-slate-100 align-top">
                       <td className="px-3 py-2 text-slate-800">
                         {item.codigo && <span className="mr-1 font-mono text-xs text-slate-400">{item.codigo}</span>}
                         {item.detalle}
-                        {tarea && (
+                        {tarea && !puedeEjecutarTarea && (
                           <p className="text-xs text-slate-500">
                             {nombreTecnico || 'Sin asignar'} · {tarea.estado}
                           </p>
                         )}
-                        {tarea && !bloqueada && (ROLES_QUE_ASIGNAN_TECNICO.includes(usuario?.rol) || tarea.tecnico_id === usuario?.id) ? (
+                        {puedeEjecutarTarea ? (
                           <ControlTareaTecnico
                             tarea={tarea}
+                            nombreTecnico={nombreTecnico}
                             onCompletar={() => completarTareaTecnico(tarea.id)}
                             onGuardarObservacion={(texto) => guardarObservacionTecnico(tarea.id, texto)}
                           />
