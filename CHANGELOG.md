@@ -1,5 +1,11 @@
 # Registro de cambios
 
+## 2026-09-28 — Demo: nombres reales para el resto del equipo (`0063_demo_nombres_reales_equipo.sql`)
+
+- Los 5 técnicos ya tenían el nombre real del equipo desde 0050; el resto de los usuarios demo seguían con nombres de relleno. Se completan por rol: admin → David Vera, asesor → Diego Leyton, jefe_taller → Andrés Aracena, encargado_presupuestos → Víctor Tello (coordinador de repuestos), socia → Jessica Díaz (la empresa real tiene dos socias -Alexis Díaz y Jessica Díaz-, la demo solo tiene un cupo; se eligió con el cliente). No se tocan correos ni roles.
+- `recepcionista` se deja igual ("Rocío Recepción"): hoy no existe nadie con ese rol en la empresa real.
+- De paso completa `clickup_config.responsable_repuestos_id` para la demo (0062 no había podido: en ese momento nadie se llamaba "Tello" ahí).
+
 ## 2026-09-28 — Descripción y listas de control editables desde el Kanban (`0062_coordinador_repuestos.sql`, función `clickup-item`)
 
 **Qué se entrega:** desde el detalle de la tarjeta en el Kanban, admin/socia/jefe de taller ahora pueden:
