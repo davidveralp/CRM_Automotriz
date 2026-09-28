@@ -20,11 +20,12 @@ import {
 } from '../lib/plano'
 
 import { formatearPatente } from '../lib/patente'
+import Kanban from '../components/taller/Kanban'
 const ROLES_EDITORES = ['admin', 'socia', 'jefe_taller']
 const REFRESCO_MS = 60000
 
 const SELECT_OT =
-  'id, numero_ot, estado, clickup_estado_actual, estado_cambiado_en, vehiculos(patente, marca, modelo), clientes(tipo, nombre, apellido, razon_social)'
+  'id, numero_ot, estado, clickup_estado_actual, estado_cambiado_en, clickup_task_id, clickup_prioridad, clickup_fecha_programada, clickup_fecha_con_hora, clickup_detalle_en, vehiculos(patente, marca, modelo), clientes(tipo, nombre, apellido, razon_social)'
 
 // PostgREST devuelve un objeto o un arreglo de uno según cómo infiera la relación.
 function uno(valor) {
@@ -255,6 +256,8 @@ function Taller() {
   const [error, setError] = useState(null)
   const [actualizadoEn, setActualizadoEn] = useState(null)
 
+  const [vista, setVista] = useState('plano')
+  const [estadosClickup, setEstadosClickup] = useState([])
   const [modo, setModo] = useState('vivo')
   const [seleccionadoId, setSeleccionadoId] = useState(null)
   const [previa, setPrevia] = useState(null)
@@ -268,7 +271,7 @@ function Taller() {
   const cargar = useCallback(async (mostrarCargando = true) => {
     if (mostrarCargando) setCargando(true)
     try {
-      const [respElementos, respOcupacion, respTrabajos, respTipos, respUsuarios, respTareas] = await Promise.all([
+      const [respElementos, respOcupacion, respTrabajos, respTipos, respUsuarios, respTareas, respEstados] = await Promise.all([
         supabase.from('plano_elementos').select('*').order('creado_en'),
         supabase
           .from('plano_ocupacion')
@@ -283,8 +286,9 @@ function Taller() {
         supabase.from('usuarios').select('id, nombre_completo, rol').eq('activo', true).order('nombre_completo'),
         supabase
           .from('tareas_taller')
-          .select('trabajo_id, tecnico_id, clickup_asignado_nombre, trabajos_taller!inner(estado)')
+          .select('id, trabajo_id, descripcion, estado, completada, tecnico_id, clickup_asignado_nombre, trabajos_taller!inner(estado)')
           .filter('trabajos_taller.estado', 'not.in', '(entregado,anulado)'),
+        supabase.from('clickup_estados').select('clickup_status_id, nombre, orden, tipo, color').order('orden'),
       ])
 
       const primerError =
@@ -296,6 +300,7 @@ function Taller() {
 
       setError(null)
       setElementos(respElementos.data || [])
+      setEstadosClickup(respEstados.data || [])
       setOcupacion(respOcupacion.data || [])
       setTrabajos(respTrabajos.data || [])
       setTiposIsla(respTipos.data || [])
@@ -629,30 +634,70 @@ function Taller() {
           </p>
         </div>
 
-        {puedeEditar && (
-          <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 text-sm" role="group" aria-label="Modo del plano">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 text-sm" role="group" aria-label="Vista del taller">
             <button
               type="button"
-              onClick={() => cambiarModo('vivo')}
-              aria-pressed={!editando}
-              className={`rounded-md px-3 py-1.5 font-medium ${!editando ? 'bg-deep text-white' : 'text-slate-600 hover:bg-mist'}`}
+              onClick={() => setVista('plano')}
+              aria-pressed={vista === 'plano'}
+              className={`rounded-md px-3 py-1.5 font-medium ${vista === 'plano' ? 'bg-deep text-white' : 'text-slate-600 hover:bg-mist'}`}
             >
-              En vivo
+              Plano
             </button>
             <button
               type="button"
-              onClick={() => cambiarModo('editar')}
-              aria-pressed={editando}
-              className={`rounded-md px-3 py-1.5 font-medium ${editando ? 'bg-deep text-white' : 'text-slate-600 hover:bg-mist'}`}
+              onClick={() => setVista('kanban')}
+              aria-pressed={vista === 'kanban'}
+              className={`rounded-md px-3 py-1.5 font-medium ${vista === 'kanban' ? 'bg-deep text-white' : 'text-slate-600 hover:bg-mist'}`}
             >
-              Editar plano
+              Kanban
             </button>
           </div>
-        )}
+
+          {vista === 'plano' && puedeEditar && (
+            <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 text-sm" role="group" aria-label="Modo del plano">
+              <button
+                type="button"
+                onClick={() => cambiarModo('vivo')}
+                aria-pressed={!editando}
+                className={`rounded-md px-3 py-1.5 font-medium ${!editando ? 'bg-deep text-white' : 'text-slate-600 hover:bg-mist'}`}
+              >
+                En vivo
+              </button>
+              <button
+                type="button"
+                onClick={() => cambiarModo('editar')}
+                aria-pressed={editando}
+                className={`rounded-md px-3 py-1.5 font-medium ${editando ? 'bg-deep text-white' : 'text-slate-600 hover:bg-mist'}`}
+              >
+                Editar plano
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {error && <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
+      {vista === 'kanban' && !cargando && (
+        <Kanban
+          empresaId={usuario.empresa_id}
+          puedeEditar={puedeEditar}
+          trabajos={trabajos}
+          tareas={tareas}
+          elementos={elementos}
+          ocupacion={ocupacion}
+          tecnicos={tecnicos}
+          estadosClickup={estadosClickup}
+          onUbicar={ubicarOt}
+          onLiberar={liberarOcupacion}
+          onRecargar={() => cargar(false)}
+        />
+      )}
+      {vista === 'kanban' && cargando && <p className="text-slate-500">Cargando…</p>}
+
+      {vista === 'plano' && (
+        <>
       {editando && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3">
           <span className="mr-1 text-xs font-medium uppercase tracking-wide text-slate-500">Agregar</span>
@@ -825,6 +870,8 @@ function Taller() {
             )}
           </aside>
         </div>
+      )}
+        </>
       )}
     </div>
   )

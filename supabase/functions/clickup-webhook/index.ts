@@ -36,6 +36,10 @@ const ESTADO_RETROCESO = 'retroceso'
 const ESTADO_LISTO_PARA_ENTREGA = 'listo para entrega'
 const ESTADO_COMPRA_REPTOS = 'compra reptos'
 
+// Estados terminales de ClickUp (tipo "done"/"closed"): alimentan el % de ejecución del kanban.
+const TIPOS_ESTADO_TERMINAL = new Set(['done', 'closed'])
+const PRIORIDADES_VALIDAS = new Set(['urgent', 'high', 'normal', 'low'])
+
 // Notas libres de una subtarea con esta forma no aportan nada nuevo (ClickUp
 // deja la Descripción con este texto vacío por defecto en algunos casos).
 function textoObservacion(valor: string | null | undefined) {
@@ -60,7 +64,10 @@ async function observacionDesdeTarea(supabase: any, empresaId: string, tareaRemo
 
 interface TareaRemota {
   name: string
-  status?: { status?: string }
+  status?: { status?: string; type?: string }
+  priority?: { priority?: string } | null
+  due_date?: string | null
+  due_date_time?: boolean | null
   assignees?: { id: number; email: string }[]
   parent: string | null
   text_content?: string
@@ -167,6 +174,7 @@ Deno.serve(async (req) => {
         .update({
           descripcion: tareaRemota.name,
           estado: tareaRemota.status?.status ?? 'agenda',
+          completada: TIPOS_ESTADO_TERMINAL.has(tareaRemota.status?.type ?? ''),
           tecnico_id: usuarioAsignado?.data?.id ?? null,
           clickup_asignado_nombre: usuarioAsignado?.data ? null : asignado?.email ?? null,
           observaciones_tecnico: observacionRemota,
@@ -262,6 +270,22 @@ Deno.serve(async (req) => {
         await supabase.from('trabajos_taller').update({ clickup_estado_actual: estadoClickUp }).eq('id', trabajo.id)
       }
 
+      // Prioridad y fecha de vencimiento para el kanban. Los eventos de ClickUp que
+      // cambian SOLO la prioridad o la fecha (taskPriorityUpdated / taskDueDateUpdated)
+      // no están suscritos hoy; esto igual se pone al día con cualquier otro evento de
+      // la tarjeta, y el kanban los refresca por su cuenta al abrirse.
+      const prioridadRemota = tareaRemota.priority?.priority
+      const vencimientoRemoto = tareaRemota.due_date ? Number(tareaRemota.due_date) : null
+      await supabase
+        .from('trabajos_taller')
+        .update({
+          clickup_prioridad: prioridadRemota && PRIORIDADES_VALIDAS.has(prioridadRemota) ? prioridadRemota : null,
+          clickup_fecha_programada: vencimientoRemoto ? new Date(vencimientoRemoto).toISOString() : null,
+          clickup_fecha_con_hora: Boolean(vencimientoRemoto && tareaRemota.due_date_time),
+          clickup_detalle_en: new Date().toISOString(),
+        })
+        .eq('id', trabajo.id)
+
       return respuestaJson({ data: { reconciliado: 'trabajos_taller', id: trabajo.id } })
     }
 
@@ -284,6 +308,7 @@ Deno.serve(async (req) => {
             trabajo_id: trabajoPadre.id,
             descripcion: tareaRemota.name,
             estado: tareaRemota.status?.status ?? 'agenda',
+            completada: TIPOS_ESTADO_TERMINAL.has(tareaRemota.status?.type ?? ''),
             clickup_task_id: taskId,
             tecnico_id: usuarioAsignado?.data?.id ?? null,
             clickup_asignado_nombre: usuarioAsignado?.data ? null : asignado?.email ?? null,

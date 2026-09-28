@@ -123,6 +123,17 @@ export function obtenerTarea(tareaId: string) {
   return clickupFetch(`/task/${tareaId}`)
 }
 
+// La tarjeta con sus subtareas en una sola llamada (el kanban refresca prioridad,
+// fecha y estado de cada subtarea sin pedir una llamada por subtarea).
+export function obtenerTareaConSubtareas(tareaId: string) {
+  return clickupFetch(`/task/${tareaId}?include_subtasks=true`)
+}
+
+// La lista con sus estados (nombre exacto, tipo -open/custom/done/closed-, color y orden).
+export function obtenerLista(listaId: string) {
+  return clickupFetch(`/list/${listaId}`)
+}
+
 export function fijarCampoPersonalizado(tareaId: string, campoId: string, valor: unknown) {
   return clickupFetch(`/task/${tareaId}/field/${campoId}`, {
     method: 'POST',
