@@ -1,5 +1,12 @@
 # Registro de cambios
 
+## 2026-09-28 — Demo: catálogo de servicios completo como Didial (`0057_demo_catalogo_servicios_como_didial.sql`)
+
+- La demo tenía un catálogo de juguete (7 servicios, 4 repuestos, de 0036); ahora recibe una COPIA del catálogo real de Didial: repuestos, servicios, precios de mano de obra por tipo de vehículo/combustible y repuestos típicos por servicio. Es copia, no referencia: editar el catálogo de una empresa no toca al de la otra.
+- Idempotente: volver a correrla alinea la demo con el catálogo real (precios y repuestos por servicio de los servicios copiados se reemplazan).
+- Los 7 servicios de juguete que no existen en el catálogo real se DESACTIVAN en vez de borrarse (algunas citas demo los referencian por `citas.catalogo_servicio_id`); dejan de aparecer para elegir y las citas conservan su servicio. Reversible con `activo = true`.
+- Sin verificar contra la base real hasta correr la migración (la verificación final compara real vs demo).
+
 ## 2026-09-28 — Monitor de plataforma: registro de uso en el CRM (`0056_monitor_plataforma.sql`)
 
 **Qué se entrega:** el CRM ahora registra ingresos, pantallas vistas y errores del navegador, y una app **separada** (repo `CRM_Monitor`, su propia URL y login) los muestra al dueño de la plataforma junto con accesos, sesiones, usuarios y salud de integraciones.
