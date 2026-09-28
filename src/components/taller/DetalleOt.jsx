@@ -269,6 +269,18 @@ function DetalleOt({ trabajoId, usuario, tecnicos, nombreTecnico, onCerrar }) {
                   {hechas}/{total} subtareas · {progreso}%
                 </p>
               </div>
+              <div>
+                <p className="label">Segmento</p>
+                <p className="text-sm text-slate-700">{clickup?.segmento || '—'}</p>
+              </div>
+              <div>
+                <p className="label">Sugerencias</p>
+                <p className="text-sm text-slate-700">{clickup?.sugerencias || '—'}</p>
+              </div>
+              <div className="sm:col-span-2 lg:col-span-4">
+                <p className="label">Observaciones (campo de ClickUp)</p>
+                <p className="text-sm text-slate-700">{clickup?.observaciones || '—'}</p>
+              </div>
             </div>
 
             <div className="mt-4 rounded-lg border border-slate-200 p-4">

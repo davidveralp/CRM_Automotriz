@@ -1,5 +1,12 @@
 # Registro de cambios
 
+## 2026-09-28 — Campos personalizados que faltaban en el detalle del Kanban
+
+- Se agregan al detalle de la tarjeta los tres campos personalizados de ClickUp que faltaban por traer: **Observaciones** (el campo, no la descripción nativa de la tarjeta -esa ya se mostraba y ya se podía editar-), **Segmento** y **Sugerencias**. Se habían dejado afuera antes porque en el ejemplo que compartió el cliente estaban vacíos.
+- Se buscan por **nombre** en la respuesta de ClickUp (no por id fijo, a diferencia de los campos que el CRM sí escribe -Observaciones de subtarea, N° OT, Patente, Tipo de servicio-, que si necesitan el id exacto configurado por empresa): más simple y no depende de conocer el id de cada empresa. Resuelve listas desplegables/etiquetas contra sus opciones si Segmento o Sugerencias resultan ser ese tipo de campo.
+- Solo lectura por ahora (igual que Segmento/Sugerencias en ClickUp, que en el ejemplo real estaban vacíos): no se agregó edición para estos tres, a diferencia de la descripción.
+- **Verificado:** `npm run verificar`, `vite build`, `deno check`; se probó en el navegador contra la demo real -la grilla se ve bien, sin errores-, pero como el ejemplo real no tiene esos campos con datos, faltó probar con una tarjeta real que sí tenga Segmento/Sugerencias/Observaciones cargados. **Falta desplegar `clickup-kanban`** (se le agregó código a la acción `detalle`).
+
 ## 2026-09-28 — Demo: nombres reales para el resto del equipo (`0063_demo_nombres_reales_equipo.sql`)
 
 - Los 5 técnicos ya tenían el nombre real del equipo desde 0050; el resto de los usuarios demo seguían con nombres de relleno. Se completan por rol: admin → David Vera, asesor → Diego Leyton, jefe_taller → Andrés Aracena, encargado_presupuestos → Víctor Tello (coordinador de repuestos), socia → Jessica Díaz (la empresa real tiene dos socias -Alexis Díaz y Jessica Díaz-, la demo solo tiene un cupo; se eligió con el cliente). No se tocan correos ni roles.

@@ -48,6 +48,13 @@ interface EstadoLista {
   color?: string
 }
 
+interface CampoPersonalizadoRemoto {
+  name: string
+  type?: string
+  type_config?: { options?: { id: string; name?: string; label?: string; orderindex?: number }[] }
+  value?: unknown
+}
+
 interface TareaRemota {
   id: string
   status?: { status?: string; type?: string }
@@ -58,6 +65,30 @@ interface TareaRemota {
   text_content?: string
   description?: string
   subtasks?: { id: string; status?: { status?: string; type?: string } }[]
+  custom_fields?: CampoPersonalizadoRemoto[]
+}
+
+// Campos personalizados de ClickUp que solo se MUESTRAN en el detalle (no se
+// escriben desde el CRM): se buscan por NOMBRE en la respuesta de la propia
+// tarea, no por id fijo -a diferencia de CAMPOS_PERSONALIZADOS en
+// _shared/clickup.ts, que son los que el CRM sí escribe y por eso necesitan
+// el id exacto configurado por empresa-. Resuelve dropdown/labels contra sus
+// opciones; el resto lo muestra tal cual.
+function valorCampoPersonalizado(campos: CampoPersonalizadoRemoto[] | undefined, nombre: string): string | null {
+  const campo = campos?.find((c) => c.name === nombre)
+  if (!campo || campo.value == null || campo.value === '') return null
+
+  const opciones = campo.type_config?.options
+  if ((campo.type === 'drop_down' || campo.type === 'labels') && opciones) {
+    const ids = Array.isArray(campo.value) ? campo.value : [campo.value]
+    const nombres = ids
+      .map((id) => opciones.find((o) => o.id === id || String(o.orderindex) === String(id)))
+      .map((o) => o?.name ?? o?.label)
+      .filter(Boolean)
+    return nombres.length > 0 ? nombres.join(', ') : null
+  }
+
+  return typeof campo.value === 'string' ? campo.value : JSON.stringify(campo.value)
 }
 
 const esperar = (ms: number) => new Promise((resolver) => setTimeout(resolver, ms))
@@ -256,7 +287,7 @@ Deno.serve(async (req) => {
         .maybeSingle()
       if (!trabajo) return respuestaJson({ error: { mensaje: 'OT no encontrada.' } }, 404)
       if (!trabajo.clickup_task_id) {
-        return respuestaJson({ data: { descripcion: null, fecha_inicio: null } })
+        return respuestaJson({ data: { descripcion: null, fecha_inicio: null, observaciones: null, segmento: null, sugerencias: null } })
       }
 
       let remota: TareaRemota
@@ -276,7 +307,15 @@ Deno.serve(async (req) => {
         .update({ clickup_descripcion: descripcion, clickup_fecha_inicio: fechaInicio })
         .eq('id', trabajo.id)
 
-      return respuestaJson({ data: { descripcion, fecha_inicio: fechaInicio } })
+      return respuestaJson({
+        data: {
+          descripcion,
+          fecha_inicio: fechaInicio,
+          observaciones: valorCampoPersonalizado(remota.custom_fields, 'Observaciones'),
+          segmento: valorCampoPersonalizado(remota.custom_fields, 'Segmento'),
+          sugerencias: valorCampoPersonalizado(remota.custom_fields, 'Sugerencias'),
+        },
+      })
     }
 
     if (cuerpo.accion === 'descripcion') {
