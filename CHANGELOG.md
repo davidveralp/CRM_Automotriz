@@ -1,5 +1,17 @@
 # Registro de cambios
 
+## 2026-09-28 — Descripción y listas de control editables desde el Kanban (`0062_coordinador_repuestos.sql`, función `clickup-item`)
+
+**Qué se entrega:** desde el detalle de la tarjeta en el Kanban, admin/socia/jefe de taller ahora pueden:
+- **Editar la descripción** de la tarjeta (antes solo se leía).
+- **Agregar, editar y marcar** ítems de las tres listas de control (Repuestos, Lubricantes e insumos, Servicios externos) -antes solo se veían, de solo lectura-. El check de cada ítem ES el control para marcarlo verificado, igual que las subtareas.
+- Todo se empuja a ClickUp: la descripción a la tarjeta, los ítems al checklist correspondiente (se crea el checklist si todavía no existe en la tarjeta).
+
+- **Asignación automática al coordinador de repuestos:** los ítems nuevos de Repuestos y Lubricantes e insumos se asignan solos a quien esté configurado como `clickup_config.responsable_repuestos_id` (hoy Víctor Tello, para que prepare todo antes de la reparación y/o compre lo que falte) -Servicios externos no lleva asignación automática, son terceros-. Se guarda en la base, no hardcodeado: si cambia quién coordina, se actualiza con un UPDATE.
+- **`0062`:** `clickup_config` gana `responsable_repuestos_id`; se completó solo donde ya hay un usuario activo con apellido Tello (real y demo).
+- **Función nueva `clickup-item`** (acciones `agregar`/`editar`/`marcar`), mismo nivel de acceso que el resto del Kanban. `clickup-kanban` gana la acción `descripcion`.
+- **Verificado:** `npm run verificar`, `vite build`, `deno check`. Probado en el navegador contra la demo real: la UI se ve y se comporta bien, y al no estar desplegadas todavía las funciones nuevas, el intento de guardar deshizo el cambio solo (optimista con reversión), sin dejar nada a medias. **No verificado el guardado real todavía**: falta correr `0062` y desplegar `clickup-item` (nueva) y `clickup-kanban` (para la acción `descripcion`).
+
 ## 2026-09-28 — El check de la tarea es el control para terminarla, y exige observación
 
 - Se quitó el botón "Marcar ejecutada" aparte: ahora el círculo/check a la izquierda de cada subtarea ES el control -tocarlo abre el formulario de observación-, tanto en el detalle del Kanban como en Trabajos → Mano de obra.

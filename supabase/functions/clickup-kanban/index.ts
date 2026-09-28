@@ -21,6 +21,9 @@
 //                     del detalle (subtareas, checklists, campos) se arma en el
 //                     frontend con lo que ya está sincronizado-. Una sola llamada
 //                     por apertura, no por cada tarjeta del tablero.
+//   - descripcion:    edita la descripción de la tarjeta (texto libre, no el campo
+//                     personalizado "Observaciones"). Se empuja a ClickUp y se
+//                     guarda en caché en trabajos_taller.clickup_descripcion.
 //
 // Quién llama se identifica con su sesión (no con un secreto): solo admin, socia y
 // jefe de taller, y todo se acota a SU empresa. Las escrituras usan service role
@@ -66,7 +69,13 @@ Deno.serve(async (req) => {
     const autorizacion = req.headers.get('Authorization')
     if (!autorizacion) return respuestaJson({ error: { mensaje: 'Falta la sesión.' } }, 401)
 
-    const cuerpo = (await req.json()) as { accion?: string; trabajo_id?: string; estado?: string; trabajo_ids?: string[] }
+    const cuerpo = (await req.json()) as {
+      accion?: string
+      trabajo_id?: string
+      estado?: string
+      trabajo_ids?: string[]
+      descripcion?: string
+    }
 
     const clienteUsuario = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
       global: { headers: { Authorization: autorizacion } },
@@ -268,6 +277,38 @@ Deno.serve(async (req) => {
         .eq('id', trabajo.id)
 
       return respuestaJson({ data: { descripcion, fecha_inicio: fechaInicio } })
+    }
+
+    if (cuerpo.accion === 'descripcion') {
+      if (!cuerpo.trabajo_id) return respuestaJson({ error: { mensaje: 'Falta trabajo_id.' } }, 400)
+
+      const { data: trabajo } = await admin
+        .from('trabajos_taller')
+        .select('id, clickup_task_id, estado')
+        .eq('id', cuerpo.trabajo_id)
+        .eq('empresa_id', empresaId)
+        .maybeSingle()
+      if (!trabajo) return respuestaJson({ error: { mensaje: 'OT no encontrada.' } }, 404)
+      if (['entregado', 'anulado'].includes(trabajo.estado)) {
+        return respuestaJson({ error: { mensaje: 'La OT está cerrada: no se puede editar la descripción.' } }, 422)
+      }
+
+      const texto = (cuerpo.descripcion ?? '').trim() || null
+
+      if (trabajo.clickup_task_id) {
+        try {
+          await actualizarTarea(trabajo.clickup_task_id as string, { description: texto ?? '' })
+        } catch (error) {
+          await registrarError(trabajo.id, 'kanban_editar_descripcion', error)
+          const mensaje = error instanceof ErrorClickUp ? `ClickUp rechazó el cambio: ${error.message}` : 'No se pudo actualizar la descripción en ClickUp.'
+          return respuestaJson({ error: { mensaje } }, 502)
+        }
+      }
+
+      const { error: errorUpdate } = await admin.from('trabajos_taller').update({ clickup_descripcion: texto }).eq('id', trabajo.id)
+      if (errorUpdate) return respuestaJson({ error: { mensaje: errorUpdate.message } }, 500)
+
+      return respuestaJson({ data: { descripcion: texto } })
     }
 
     return respuestaJson({ error: { mensaje: 'Acción desconocida.' } }, 400)

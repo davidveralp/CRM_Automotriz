@@ -134,6 +134,55 @@ function DetalleOt({ trabajoId, usuario, tecnicos, nombreTecnico, onCerrar }) {
     }
   }
 
+  async function guardarDescripcion(texto) {
+    const anterior = clickup
+    setClickup((actual) => ({ ...actual, descripcion: texto }))
+    try {
+      await invocarFuncion('clickup-kanban', { body: { accion: 'descripcion', trabajo_id: trabajoId, descripcion: texto } })
+    } catch (excepcion) {
+      setClickup(anterior)
+      setError(excepcion.message)
+    }
+  }
+
+  function actualizarItem(id, cambios) {
+    setItems((actual) => actual.map((i) => (i.id === id ? { ...i, ...cambios } : i)))
+  }
+
+  async function agregarItem(area, detalle, cantidad) {
+    const optimista = { id: `temp-${Date.now()}`, area, detalle, cantidad, verificado: false }
+    setItems((actual) => [...actual, optimista])
+    try {
+      const resultado = await invocarFuncion('clickup-item', { body: { accion: 'agregar', trabajo_id: trabajoId, area, detalle, cantidad } })
+      setItems((actual) => actual.map((i) => (i.id === optimista.id ? { ...i, id: resultado.id } : i)))
+    } catch (excepcion) {
+      setItems((actual) => actual.filter((i) => i.id !== optimista.id))
+      setError(excepcion.message)
+    }
+  }
+
+  async function editarItem(id, detalle, cantidad) {
+    const anterior = items.find((i) => i.id === id)
+    actualizarItem(id, { detalle, cantidad })
+    try {
+      await invocarFuncion('clickup-item', { body: { accion: 'editar', item_id: id, detalle, cantidad } })
+    } catch (excepcion) {
+      actualizarItem(id, anterior)
+      setError(excepcion.message)
+    }
+  }
+
+  async function marcarItem(id, verificado) {
+    const anterior = items.find((i) => i.id === id)
+    actualizarItem(id, { verificado })
+    try {
+      await invocarFuncion('clickup-item', { body: { accion: 'marcar', item_id: id, verificado } })
+    } catch (excepcion) {
+      actualizarItem(id, anterior)
+      setError(excepcion.message)
+    }
+  }
+
   const vehiculo = trabajo ? uno(trabajo.vehiculos) : null
   const cliente = trabajo ? uno(trabajo.clientes) : null
   const asignados = [...new Set(subtareas.map((t) => (t.tecnico_id ? nombreTecnico(t.tecnico_id) : t.clickup_asignado_nombre)).filter(Boolean))]
@@ -226,10 +275,8 @@ function DetalleOt({ trabajoId, usuario, tecnicos, nombreTecnico, onCerrar }) {
               <p className="label mb-1">Descripción</p>
               {clickup?.error ? (
                 <p className="text-sm text-amber-700">No se pudo traer la descripción de ClickUp: {clickup.error}</p>
-              ) : clickup?.descripcion ? (
-                <p className="whitespace-pre-line text-sm text-slate-700">{clickup.descripcion}</p>
               ) : (
-                <p className="text-sm text-slate-400">Sin descripción en ClickUp.</p>
+                <DescripcionOt puedeEditar={puedeAsignar} descripcion={clickup?.descripcion || ''} onGuardar={guardarDescripcion} />
               )}
             </div>
 
@@ -258,24 +305,16 @@ function DetalleOt({ trabajoId, usuario, tecnicos, nombreTecnico, onCerrar }) {
 
             {AREAS.map((area) => {
               const filas = items.filter((i) => i.area === area)
-              if (filas.length === 0) return null
               return (
-                <div key={area} className="mt-4 rounded-lg border border-slate-200 p-4">
-                  <p className="label mb-2">
-                    {NOMBRE_CHECKLIST_POR_AREA[area]} ({filas.filter((i) => i.verificado).length}/{filas.length})
-                  </p>
-                  <ul className="space-y-1">
-                    {filas.map((item) => (
-                      <li key={item.id} className="flex items-center gap-2 text-sm">
-                        <span className={item.verificado ? 'text-emerald-600' : 'text-slate-300'}>{item.verificado ? '✓' : '○'}</span>
-                        <span className={item.verificado ? 'text-slate-400 line-through' : 'text-slate-700'}>
-                          {item.detalle}
-                          {item.cantidad > 1 ? ` (x${item.cantidad})` : ''}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <SeccionChecklist
+                  key={area}
+                  area={area}
+                  filas={filas}
+                  puedeEditar={puedeAsignar}
+                  onAgregar={(detalle, cantidad) => agregarItem(area, detalle, cantidad)}
+                  onEditar={editarItem}
+                  onMarcar={marcarItem}
+                />
               )
             })}
           </div>
@@ -425,6 +464,203 @@ function FilaSubtarea({ tarea, puedeAsignar, puedeEjecutar, listaTecnicos, nombr
         )
       )}
     </div>
+  )
+}
+
+// Descripción nativa de la tarjeta de ClickUp (no el campo "Observaciones").
+// Editable solo por quien administra el equipo (mismo nivel que asignar técnico).
+function DescripcionOt({ puedeEditar, descripcion, onGuardar }) {
+  const [editando, setEditando] = useState(false)
+  const [texto, setTexto] = useState(descripcion)
+  const [guardando, setGuardando] = useState(false)
+
+  useEffect(() => {
+    if (!editando) setTexto(descripcion)
+  }, [descripcion, editando])
+
+  async function guardar(evento) {
+    evento.preventDefault()
+    setGuardando(true)
+    await onGuardar(texto.trim())
+    setGuardando(false)
+    setEditando(false)
+  }
+
+  if (editando) {
+    return (
+      <form onSubmit={guardar}>
+        <textarea
+          value={texto}
+          onChange={(evento) => setTexto(evento.target.value)}
+          rows={5}
+          autoFocus
+          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+          placeholder="Diagnóstico, presupuestos enviados, cualquier nota libre de la tarjeta…"
+        />
+        <div className="mt-1.5 flex gap-2">
+          <button type="submit" disabled={guardando} className="rounded bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50">
+            Guardar
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTexto(descripcion)
+              setEditando(false)
+            }}
+            className="text-xs text-slate-500 underline"
+          >
+            Cancelar
+          </button>
+        </div>
+      </form>
+    )
+  }
+
+  return (
+    <div>
+      {descripcion ? <p className="whitespace-pre-line text-sm text-slate-700">{descripcion}</p> : <p className="text-sm text-slate-400">Sin descripción en ClickUp.</p>}
+      {puedeEditar && (
+        <button type="button" onClick={() => setEditando(true)} className="mt-1 text-xs text-slate-500 underline hover:text-slate-800">
+          {descripcion ? 'Editar' : 'Agregar descripción'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// Una lista de control (Repuestos/Lubricantes e insumos/Servicios externos):
+// marcar cada ítem (el check ES el control, igual que las subtareas),
+// editar su nombre/cantidad y agregar ítems nuevos.
+function SeccionChecklist({ area, filas, puedeEditar, onAgregar, onEditar, onMarcar }) {
+  const [agregando, setAgregando] = useState(false)
+  const [detalleNuevo, setDetalleNuevo] = useState('')
+  const [cantidadNueva, setCantidadNueva] = useState('1')
+
+  async function agregar(evento) {
+    evento.preventDefault()
+    if (!detalleNuevo.trim()) return
+    await onAgregar(detalleNuevo.trim(), Number(cantidadNueva) || 1)
+    setDetalleNuevo('')
+    setCantidadNueva('1')
+    setAgregando(false)
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="label">
+          {NOMBRE_CHECKLIST_POR_AREA[area]} ({filas.filter((i) => i.verificado).length}/{filas.length})
+        </p>
+        {puedeEditar && !agregando && (
+          <button type="button" onClick={() => setAgregando(true)} className="text-xs text-slate-500 underline hover:text-slate-800">
+            + Agregar
+          </button>
+        )}
+      </div>
+
+      {filas.length === 0 && !agregando && <p className="text-sm text-slate-400">Sin ítems todavía.</p>}
+
+      <ul className="space-y-1">
+        {filas.map((fila) => {
+          const propsFila = { item: fila, puedeEditar, onEditar, onMarcar }
+          return <FilaChecklist key={fila.id} {...propsFila} />
+        })}
+      </ul>
+
+      {agregando && (
+        <form onSubmit={agregar} className="mt-2 flex flex-wrap items-center gap-1.5">
+          <input
+            value={detalleNuevo}
+            onChange={(evento) => setDetalleNuevo(evento.target.value)}
+            autoFocus
+            placeholder="Nombre del ítem"
+            className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+          <input
+            type="number"
+            min="1"
+            value={cantidadNueva}
+            onChange={(evento) => setCantidadNueva(evento.target.value)}
+            className="w-16 rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+          <button type="submit" className="rounded bg-slate-900 px-2 py-1 text-xs text-white">
+            Agregar
+          </button>
+          <button type="button" onClick={() => setAgregando(false)} className="text-xs text-slate-500 underline">
+            Cancelar
+          </button>
+        </form>
+      )}
+    </div>
+  )
+}
+
+function FilaChecklist({ item, puedeEditar, onEditar, onMarcar }) {
+  const [editando, setEditando] = useState(false)
+  const [detalle, setDetalle] = useState(item.detalle)
+  const [cantidad, setCantidad] = useState(item.cantidad)
+
+  async function guardar(evento) {
+    evento.preventDefault()
+    if (!detalle.trim()) return
+    await onEditar(item.id, detalle.trim(), Number(cantidad) || 1)
+    setEditando(false)
+  }
+
+  if (editando) {
+    return (
+      <li>
+        <form onSubmit={guardar} className="flex flex-wrap items-center gap-1.5">
+          <input value={detalle} onChange={(evento) => setDetalle(evento.target.value)} autoFocus className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-sm" />
+          <input
+            type="number"
+            min="1"
+            value={cantidad}
+            onChange={(evento) => setCantidad(evento.target.value)}
+            className="w-16 rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+          <button type="submit" className="rounded bg-slate-900 px-2 py-1 text-xs text-white">
+            Guardar
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDetalle(item.detalle)
+              setCantidad(item.cantidad)
+              setEditando(false)
+            }}
+            className="text-xs text-slate-500 underline"
+          >
+            Cancelar
+          </button>
+        </form>
+      </li>
+    )
+  }
+
+  return (
+    <li className="flex items-center gap-2 text-sm">
+      <button
+        type="button"
+        onClick={() => puedeEditar && onMarcar(item.id, !item.verificado)}
+        disabled={!puedeEditar}
+        title={item.verificado ? 'Verificado' : puedeEditar ? 'Marcar verificado' : undefined}
+        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] ${
+          item.verificado ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 text-transparent hover:border-emerald-500'
+        }`}
+      >
+        ✓
+      </button>
+      <span className={item.verificado ? 'text-slate-400 line-through' : 'text-slate-700'}>
+        {item.detalle}
+        {item.cantidad > 1 ? ` (x${item.cantidad})` : ''}
+      </span>
+      {puedeEditar && (
+        <button type="button" onClick={() => setEditando(true)} className="text-xs text-slate-400 underline hover:text-slate-700">
+          Editar
+        </button>
+      )}
+    </li>
   )
 }
 
