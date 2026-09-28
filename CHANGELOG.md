@@ -1,5 +1,10 @@
 # Registro de cambios
 
+## 2026-09-28 — Ajuste: el detalle de la OT no debía tapar el menú ni la barra superior
+
+- El detalle de la tarjeta (0061) quedó primero como un overlay `fixed inset-0` que cubría toda la pantalla, menú incluido -no era lo pedido-. Ahora reemplaza el tablero dentro del mismo espacio de contenido (como ya hacía el toggle Plano/Kanban), sin tapar el menú lateral ni la barra superior; un botón "← Volver al tablero" reemplaza a la X.
+- Probado contra la base real de la demo: asignar un técnico a una subtarea (con notificación real creada) y marcarla ejecutada, los dos de punta a punta.
+
 ## 2026-09-28 — Colores por estado, detalle a pantalla completa y asignar técnico desde el Kanban (`0061_asignar_tecnico_tarea.sql`, función `clickup-tarea`)
 
 **Qué se entrega:**

@@ -133,6 +133,14 @@ function Kanban({ usuario, puedeEditar, trabajos, tareas, elementos, ocupacion, 
     }
   }
 
+  // El detalle reemplaza el tablero (no un overlay de pantalla completa): ocupa
+  // el mismo espacio de contenido, sin taparle el menú ni la barra superior.
+  if (detalleAbierto) {
+    return (
+      <DetalleOt trabajoId={detalleAbierto} usuario={usuario} tecnicos={tecnicos} nombreTecnico={nombreTecnico} onCerrar={() => setDetalleAbierto(null)} />
+    )
+  }
+
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -232,10 +240,6 @@ function Kanban({ usuario, puedeEditar, trabajos, tareas, elementos, ocupacion, 
       )}
       {puedeEditar && (
         <p className="mt-2 text-xs text-slate-400">Toca una tarjeta para ver su detalle, o arrástrala a otra columna para cambiar el estado en ClickUp.</p>
-      )}
-
-      {detalleAbierto && (
-        <DetalleOt trabajoId={detalleAbierto} usuario={usuario} tecnicos={tecnicos} nombreTecnico={nombreTecnico} onCerrar={() => setDetalleAbierto(null)} />
       )}
     </div>
   )
