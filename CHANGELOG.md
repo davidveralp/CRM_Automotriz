@@ -1,5 +1,10 @@
 # Registro de cambios
 
+## 2026-09-28 — Kanban como vista principal + reubicación de la demo (`0060_demo_reubicar_ot_segun_estado.sql`)
+
+- Taller ahora abre en Kanban por defecto (antes abría en Plano); el botón queda primero en el selector.
+- Ajuste puntual de datos de la demo (no toca el tenant real): cada OT activa se reubicó en el puesto que le corresponde según su estado actual, con las mismas reglas del Kanban -el plano demo se armó antes de que existieran, así que varios vehículos quedaron en un puesto que ya no calzaba, que es justo lo que el aviso rojo del Kanban venía señalando-. Un estado sin regla (agenda, prueba en ruta, retroceso) no se toca. Si no hay puesto libre de la categoría que corresponde, la OT se deja donde está y queda un aviso (NOTICE) para revisar a mano.
+
 ## 2026-09-28 — Detalle de la tarjeta en el Kanban (`0059_detalle_ot_clickup.sql`)
 
 **Qué se entrega:** al tocar una tarjeta del Kanban se abre el detalle completo de la OT, con la misma información que se ve al abrir la tarjeta en ClickUp: encabezado (patente/modelo/km/OT/cliente/teléfono), estado, personas asignadas, fechas (inicio → vencimiento), prioridad, progreso, la descripción larga de la tarjeta, la tabla de subtareas (con su observación y persona asignada) y las listas de control por área (Repuestos, Lubricantes e insumos, Servicios Rápidos).

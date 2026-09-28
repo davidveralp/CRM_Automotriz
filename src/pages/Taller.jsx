@@ -256,7 +256,7 @@ function Taller() {
   const [error, setError] = useState(null)
   const [actualizadoEn, setActualizadoEn] = useState(null)
 
-  const [vista, setVista] = useState('plano')
+  const [vista, setVista] = useState('kanban')
   const [estadosClickup, setEstadosClickup] = useState([])
   const [modo, setModo] = useState('vivo')
   const [seleccionadoId, setSeleccionadoId] = useState(null)
@@ -638,19 +638,19 @@ function Taller() {
           <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 text-sm" role="group" aria-label="Vista del taller">
             <button
               type="button"
-              onClick={() => setVista('plano')}
-              aria-pressed={vista === 'plano'}
-              className={`rounded-md px-3 py-1.5 font-medium ${vista === 'plano' ? 'bg-deep text-white' : 'text-slate-600 hover:bg-mist'}`}
-            >
-              Plano
-            </button>
-            <button
-              type="button"
               onClick={() => setVista('kanban')}
               aria-pressed={vista === 'kanban'}
               className={`rounded-md px-3 py-1.5 font-medium ${vista === 'kanban' ? 'bg-deep text-white' : 'text-slate-600 hover:bg-mist'}`}
             >
               Kanban
+            </button>
+            <button
+              type="button"
+              onClick={() => setVista('plano')}
+              aria-pressed={vista === 'plano'}
+              className={`rounded-md px-3 py-1.5 font-medium ${vista === 'plano' ? 'bg-deep text-white' : 'text-slate-600 hover:bg-mist'}`}
+            >
+              Plano
             </button>
           </div>
 
