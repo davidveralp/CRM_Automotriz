@@ -1,5 +1,14 @@
 # Registro de cambios
 
+## 2026-09-28 — Detalle de la tarjeta en el Kanban (`0059_detalle_ot_clickup.sql`)
+
+**Qué se entrega:** al tocar una tarjeta del Kanban se abre el detalle completo de la OT, con la misma información que se ve al abrir la tarjeta en ClickUp: encabezado (patente/modelo/km/OT/cliente/teléfono), estado, personas asignadas, fechas (inicio → vencimiento), prioridad, progreso, la descripción larga de la tarjeta, la tabla de subtareas (con su observación y persona asignada) y las listas de control por área (Repuestos, Lubricantes e insumos, Servicios Rápidos).
+
+- **Casi todo sale de lo que ya estaba sincronizado en la base** -no hace falta traer nada nuevo de ClickUp para armar la mayoría del detalle-: subtareas y sus observaciones (`tareas_taller`), listas de control (`ot_detalle`), patente/modelo/cliente/teléfono/km/tipo de servicio. La única excepción es la descripción nativa de la tarjeta (no es lo mismo que el campo personalizado "Observaciones", que ya se llena desde `inspecciones_ingreso` al sincronizar) y la fecha de inicio: esas se traen en vivo de ClickUp, una sola llamada al abrir la tarjeta -no en cada refresco del tablero-.
+- **`0059`:** `trabajos_taller` gana `clickup_descripcion` y `clickup_fecha_inicio`.
+- **`clickup-kanban` gana la acción `detalle`**, que trae y guarda esas dos columnas para una sola OT.
+- **Verificado:** `npm run verificar`, `vite build`, `deno check`. El modal se probó en el navegador con datos simulados (encabezado, prioridad, fechas, subtareas tachadas al completarse, las tres listas de control) sin errores de consola. **No verificado contra la base real**: falta correr `0059` y desplegar `clickup-kanban` de nuevo (`npx supabase functions deploy clickup-kanban`).
+
 ## 2026-09-28 — Kanban del taller, sincronizado con el plano (`0058_kanban_taller.sql`, función `clickup-kanban`)
 
 **Qué se entrega:** Taller ahora tiene dos vistas, Plano y Kanban, con el mismo botón arriba. El kanban muestra una columna por estado de ClickUp y una tarjeta por OT activa, con patente/modelo/OT, técnicos asignados (avatares con iniciales, de las subtareas), fecha y hora programada (vencimiento de la tarjeta en ClickUp, con aviso si está vencida), prioridad, barra de % de ejecución y cantidad de subtareas. Arrastrar una tarjeta a otra columna cambia el estado EN CLICKUP.

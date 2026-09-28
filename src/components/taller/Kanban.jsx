@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { invocarFuncion } from '../../lib/invocarFuncion'
 import { formatearPatente } from '../../lib/patente'
 import { nombreCliente } from '../../lib/plano'
+import DetalleOt from './DetalleOt'
 import {
   CATEGORIAS_UBICACION,
   PRIORIDADES,
@@ -32,6 +33,7 @@ function Kanban({ puedeEditar, trabajos, tareas, elementos, ocupacion, tecnicos,
   const [aviso, setAviso] = useState(null)
   const [reubicar, setReubicar] = useState(null) // { trabajoId, regla, elemento } tras un cambio de estado
   const [sobreEstadoOptimista, setSobreEstadoOptimista] = useState({}) // trabajoId -> estado (mientras ClickUp/webhook se ponen al día)
+  const [detalleAbierto, setDetalleAbierto] = useState(null) // trabajo_id de la tarjeta abierta, o null
 
   const nombreTecnico = (id) => tecnicos.find((t) => t.id === id)?.nombre_completo || null
   const elementoDe = useMemo(() => new Map(ocupacion.map((o) => [o.trabajo_id, o.elemento_id])), [ocupacion])
@@ -207,6 +209,7 @@ function Kanban({ puedeEditar, trabajos, tareas, elementos, ocupacion, tecnicos,
                       arrastrable={puedeEditar}
                       onDragStart={() => setArrastrando(ot)}
                       onDragEnd={() => setArrastrando(null)}
+                      onAbrir={() => setDetalleAbierto(ot.id)}
                     />
                   ))}
                   {filas.length === 0 && <p className="px-2 py-4 text-center text-xs text-slate-400">Sin OT en este estado</p>}
@@ -217,13 +220,15 @@ function Kanban({ puedeEditar, trabajos, tareas, elementos, ocupacion, tecnicos,
         </div>
       )}
       {puedeEditar && (
-        <p className="mt-2 text-xs text-slate-400">Arrastra una tarjeta a otra columna para cambiar el estado en ClickUp.</p>
+        <p className="mt-2 text-xs text-slate-400">Toca una tarjeta para ver su detalle, o arrástrala a otra columna para cambiar el estado en ClickUp.</p>
       )}
+
+      {detalleAbierto && <DetalleOt trabajoId={detalleAbierto} nombreTecnico={nombreTecnico} onCerrar={() => setDetalleAbierto(null)} />}
     </div>
   )
 }
 
-function TarjetaOt({ ot, estado, subtareas, elemento, nombreTecnico, arrastrable, onDragStart, onDragEnd }) {
+function TarjetaOt({ ot, estado, subtareas, elemento, nombreTecnico, arrastrable, onDragStart, onDragEnd, onAbrir }) {
   const vehiculo = uno(ot.vehiculos)
   const progreso = progresoSubtareas(subtareas)
   const regla = reglaDeUbicacion({ estado, subtareas })
@@ -237,12 +242,21 @@ function TarjetaOt({ ot, estado, subtareas, elemento, nombreTecnico, arrastrable
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       draggable={arrastrable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`rounded-md border bg-white p-2 shadow-sm ${arrastrable ? 'cursor-grab active:cursor-grabbing' : ''} ${
-        ubicacion === 'incorrecta' ? 'border-red-300' : ubicacion === 'sin_ubicar' ? 'border-amber-300' : 'border-slate-200'
-      }`}
+      onClick={onAbrir}
+      onKeyDown={(evento) => {
+        if (evento.key === 'Enter' || evento.key === ' ') {
+          evento.preventDefault()
+          onAbrir()
+        }
+      }}
+      className={`cursor-pointer rounded-md border bg-white p-2 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-deep ${
+        arrastrable ? 'active:cursor-grabbing' : ''
+      } ${ubicacion === 'incorrecta' ? 'border-red-300' : ubicacion === 'sin_ubicar' ? 'border-amber-300' : 'border-slate-200'}`}
     >
       <div className="mb-1 flex items-start justify-between gap-1">
         <div className="min-w-0">

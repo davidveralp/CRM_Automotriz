@@ -15,6 +15,12 @@
 //                     subtareas de las OT pedidas (el webhook de hoy no escucha los
 //                     eventos de prioridad ni de fecha). Tampoco toca
 //                     clickup_estado_actual, por la misma razón.
+//   - detalle:        para el detalle de una sola OT (al abrir la tarjeta en el
+//                     Kanban): trae de ClickUp la descripción y la fecha de inicio
+//                     de la tarjeta -lo único que no vive ya en la base; el resto
+//                     del detalle (subtareas, checklists, campos) se arma en el
+//                     frontend con lo que ya está sincronizado-. Una sola llamada
+//                     por apertura, no por cada tarjeta del tablero.
 //
 // Quién llama se identifica con su sesión (no con un secreto): solo admin, socia y
 // jefe de taller, y todo se acota a SU empresa. Las escrituras usan service role
@@ -22,7 +28,7 @@
 // de taller también.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { respuestaJson, respuestaPreflight } from '../_shared/cors.ts'
-import { ErrorClickUp, actualizarTarea, obtenerLista, obtenerTareaConSubtareas } from '../_shared/clickup.ts'
+import { ErrorClickUp, actualizarTarea, obtenerLista, obtenerTarea, obtenerTareaConSubtareas } from '../_shared/clickup.ts'
 
 const ROLES_PERMITIDOS = ['admin', 'socia', 'jefe_taller']
 const MAX_OT_POR_LLAMADA = 12
@@ -45,6 +51,9 @@ interface TareaRemota {
   priority?: { priority?: string } | null
   due_date?: string | null
   due_date_time?: boolean | null
+  start_date?: string | null
+  text_content?: string
+  description?: string
   subtasks?: { id: string; status?: { status?: string; type?: string } }[]
 }
 
@@ -225,6 +234,40 @@ Deno.serve(async (req) => {
       }
 
       return respuestaJson({ data: { actualizados, errores, limitado } })
+    }
+
+    if (cuerpo.accion === 'detalle') {
+      if (!cuerpo.trabajo_id) return respuestaJson({ error: { mensaje: 'Falta trabajo_id.' } }, 400)
+
+      const { data: trabajo } = await admin
+        .from('trabajos_taller')
+        .select('id, clickup_task_id')
+        .eq('id', cuerpo.trabajo_id)
+        .eq('empresa_id', empresaId)
+        .maybeSingle()
+      if (!trabajo) return respuestaJson({ error: { mensaje: 'OT no encontrada.' } }, 404)
+      if (!trabajo.clickup_task_id) {
+        return respuestaJson({ data: { descripcion: null, fecha_inicio: null } })
+      }
+
+      let remota: TareaRemota
+      try {
+        remota = (await obtenerTarea(trabajo.clickup_task_id as string)) as TareaRemota
+      } catch (error) {
+        await registrarError(trabajo.id, 'kanban_detalle', error)
+        return respuestaJson({ error: { mensaje: 'No se pudo traer el detalle desde ClickUp.' } }, 502)
+      }
+
+      const descripcion = (remota.text_content ?? remota.description ?? '').trim() || null
+      const inicio = remota.start_date ? Number(remota.start_date) : null
+      const fechaInicio = inicio ? new Date(inicio).toISOString() : null
+
+      await admin
+        .from('trabajos_taller')
+        .update({ clickup_descripcion: descripcion, clickup_fecha_inicio: fechaInicio })
+        .eq('id', trabajo.id)
+
+      return respuestaJson({ data: { descripcion, fecha_inicio: fechaInicio } })
     }
 
     return respuestaJson({ error: { mensaje: 'Acción desconocida.' } }, 400)

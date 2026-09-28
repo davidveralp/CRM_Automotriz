@@ -122,6 +122,16 @@ export function progresoSubtareas(subtareas) {
   return { total, hechas, porcentaje: total === 0 ? 0 : Math.round((hechas / total) * 100) }
 }
 
+// Mismos nombres que usa clickup-sincronizar/clickup-webhook para los
+// checklists de cada área (supabase/functions/_shared/clickup.ts) -no se
+// puede importar ese archivo desde el frontend (corre en Deno), así que se
+// repite acá a propósito.
+export const NOMBRE_CHECKLIST_POR_AREA = {
+  repuestos: 'Repuestos',
+  lubricantes_insumos: 'Lubricantes e insumos',
+  servicios_externos: 'Servicios Rápidos',
+}
+
 export const PRIORIDADES = {
   urgent: { etiqueta: 'Urgente', clases: 'bg-red-100 text-red-800 ring-red-200' },
   high: { etiqueta: 'Alta', clases: 'bg-amber-100 text-amber-800 ring-amber-200' },
