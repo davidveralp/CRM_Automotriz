@@ -1,5 +1,7 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { AuthProvider } from './context/AuthContext'
+import { useEffect } from 'react'
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import { registrarVista } from './lib/uso'
 import { TemaProvider, useTema } from './lib/tema'
 import ErrorBoundary from './components/ErrorBoundary'
 import Menu from './components/Menu'
@@ -37,6 +39,13 @@ import FacturacionDetalle from './pages/FacturacionDetalle'
 function Layout({ children }) {
   const { tema } = useTema()
   const oscuro = tema === 'oscuro'
+  const { usuario } = useAuth()
+  const { pathname } = useLocation()
+
+  // Monitor de plataforma: una vista por pantalla visitada (solo con cuenta activa).
+  useEffect(() => {
+    if (usuario?.activo) registrarVista(pathname)
+  }, [usuario?.activo, pathname])
 
   // La clase "dark" vive solo en esta envoltura: el login y la encuesta pública
   // quedan siempre con su aspecto de siempre.

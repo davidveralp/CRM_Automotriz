@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
+import { registrarAccesoFallido, registrarLogin } from '../lib/uso'
 import { CURVA_AMARILLA, CURVA_ROJA, fotogramasOnda, trazoOnda } from '../lib/ondas'
 
 // Quien pide menos movimiento en su sistema ve las líneas quietas.
@@ -35,6 +36,9 @@ function Login() {
 
     if (errorLogin) {
       setError('Correo o contraseña incorrectos.')
+      registrarAccesoFallido(correo)
+    } else {
+      registrarLogin()
     }
     setEnviando(false)
   }

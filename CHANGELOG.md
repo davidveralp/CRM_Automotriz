@@ -1,5 +1,16 @@
 # Registro de cambios
 
+## 2026-09-28 — Monitor de plataforma: registro de uso en el CRM (`0056_monitor_plataforma.sql`)
+
+**Qué se entrega:** el CRM ahora registra ingresos, pantallas vistas y errores del navegador, y una app **separada** (repo `CRM_Monitor`, su propia URL y login) los muestra al dueño de la plataforma junto con accesos, sesiones, usuarios y salud de integraciones.
+
+- **Tablas nuevas** (RLS activo y SIN políticas: nadie las lee ni escribe directo por la API): `plataforma_admins` (quién puede ver el monitor, lista aparte de los roles del CRM), `uso_eventos` (login/vista/error), `uso_accesos_fallidos` (ingresos rechazados: correo escrito, nunca la clave).
+- **Escritura:** `registrar_eventos_uso` (toma empresa/usuario/rol de la sesión, no del navegador; valida tipo y largos; máx. 50 por llamada) y `registrar_acceso_fallido` (lo único que puede llamar alguien sin sesión, con tope de 300/hora para que no se pueda inflar la tabla).
+- **Lectura:** funciones `plataforma_*` (KPIs, serie diaria, módulos, horas pico, usuarios, eventos, sesiones con IP desde `auth.sessions`, errores navegador+ClickUp+Brevo, empresas). Todas exigen ser `plataforma_admin` y por defecto excluyen la empresa demo. Las acciones clave (OT, presupuestos, documentos, ventas, citas) se cuentan de las tablas del negocio, no de un registro aparte.
+- **CRM (`src/lib/uso.js`):** vistas por pantalla (ruta con ids reemplazados por `:id`), login/login fallido en `Login.jsx`, errores en `ErrorBoundary` y `window.onerror`; todo en lotes cada 10 s y **en silencio**: si el registro falla, el CRM no se entera.
+- **Alcance real:** ingresos y pantallas se cuentan desde que se despliega esto (sin historia hacia atrás); el "último ingreso" de cada usuario sí viene de `auth.users` y existe desde siempre. `plataforma_limpiar_uso(dias)` poda la bitácora a mano (no hay cron garantizado).
+- **Verificado:** `npm run verificar`; el monitor (lint + build) y sus 5 vistas renderizadas con datos simulados sin errores de consola. **No verificado contra la base real** hasta correr la migración y autorizar al dueño.
+
 ## 2026-09-27 — Turnos y asistencia (RRHH), nuevo módulo (`0055_turnos_asistencia.sql`)
 
 **Qué se entrega:** un módulo de turnos (`/turnos`, solo admin/socia/jefe de taller) que importa el informe de eventos del reloj control de Didial y clasifica cada día de cada persona según su grupo de rotación. Es un PORTE del informe Power Query que ya usaba el cliente (Cumplimiento_Turnos / Resumen_Asistencia_Mensual) -se comparó función por función contra ese código el 2026-09-27 y se corrigieron 3 diferencias antes de entregarlo (abajo)-, no un rediseño del cálculo.
