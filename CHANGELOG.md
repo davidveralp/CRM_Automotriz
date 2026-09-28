@@ -1,5 +1,16 @@
 # Registro de cambios
 
+## 2026-09-28 — Colores por estado, detalle a pantalla completa y asignar técnico desde el Kanban (`0061_asignar_tecnico_tarea.sql`, función `clickup-tarea`)
+
+**Qué se entrega:**
+- **Colores por estado, como ClickUp**: cada columna del Kanban usa el color real que tiene ese estado en ClickUp (`clickup_estados.color`, ya se sincronizaba desde 0058 pero nadie lo usaba); las tarjetas llevan una franja del mismo color.
+- **Detalle a pantalla completa**: al tocar una tarjeta, el detalle ya no es un modal chico -ocupa toda la pantalla, con scroll propio y todo el contenido del detalle (0059) visible con más espacio.
+- **Asignar técnico por tarea**: admin/socia/jefe de taller pueden elegir el técnico a cargo de cada subtarea directo desde el detalle (y también desde Trabajos → Mano de obra). Empuja el cambio de asignado a ClickUp y le llega una notificación al técnico (tipo `tarea_asignada`, nueva).
+- **El técnico ejecuta su tarea y deja su observación**: desde el detalle del Kanban o desde Trabajos → Mano de obra, el técnico asignado a una tarea (o admin/socia/jefe de taller, para cualquiera) puede marcarla "ejecutada" y escribir su observación. Ambos empujan el cambio a ClickUp también (estado de la subtarea a uno de tipo "hecho"/"cerrado", y el campo personalizado "Observaciones").
+- **`0061`:** `notificaciones` gana `tarea_taller_id` (para poder resolver la notificación de ESA tarea puntual, sin tocar otras del mismo técnico en la misma OT) y el tipo `tarea_asignada`.
+- **Función nueva `clickup-tarea`** (acciones `asignar`/`completar`/`observacion`): `asignar` solo admin/socia/jefe de taller; `completar`/`observacion` también el propio técnico asignado, solo en su tarea. Todas registran el error en `integraciones_clickup_errores` si ClickUp falla, sin perder lo ya guardado en el CRM.
+- **Verificado:** `npm run verificar`, `vite build`, `deno check`. El Kanban (colores + detalle a pantalla completa + asignar/completar/observación) se probó en el navegador con datos simulados, incluida la interacción de abrir el formulario de observación -sin errores de consola propios del código (solo el llamado real a `clickup-tarea`, que no se pudo simular sin sesión, falla como se espera fuera de este entorno-. **No verificado contra la base real**: falta correr `0061` y desplegar `clickup-tarea` (`npx supabase functions deploy clickup-tarea`).
+
 ## 2026-09-28 — Kanban como vista principal + reubicación de la demo (`0060_demo_reubicar_ot_segun_estado.sql`)
 
 - Taller ahora abre en Kanban por defecto (antes abría en Plano); el botón queda primero en el selector.

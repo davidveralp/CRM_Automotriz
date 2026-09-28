@@ -26,7 +26,7 @@ function uno(valor) {
 // fuente, mismo refresco cada minuto-, así que plano y kanban nunca se
 // desincronizan entre sí: si acá se cambia el puesto de un vehículo, el
 // plano lo refleja apenas vuelva a cargar, y viceversa.
-function Kanban({ puedeEditar, trabajos, tareas, elementos, ocupacion, tecnicos, estadosClickup, onUbicar, onRecargar }) {
+function Kanban({ usuario, puedeEditar, trabajos, tareas, elementos, ocupacion, tecnicos, estadosClickup, onUbicar, onRecargar }) {
   const [arrastrando, setArrastrando] = useState(null)
   const [ocupado, setOcupado] = useState(false)
   const [error, setError] = useState(null)
@@ -70,6 +70,9 @@ function Kanban({ puedeEditar, trabajos, tareas, elementos, ocupacion, tecnicos,
   for (const clave of tarjetasPorColumna.keys()) {
     if (!columnas.some((c) => claveEstado(c) === clave) && tarjetasPorColumna.get(clave).length > 0) columnas.push(clave)
   }
+
+  // Mismo color que le puso el estado en ClickUp (columna clickup_estados.color).
+  const colorPorClave = new Map(estadosClickup.filter((e) => e.color).map((e) => [claveEstado(e.nombre), e.color]))
 
   async function sincronizarEstados() {
     setOcupado(true)
@@ -182,6 +185,7 @@ function Kanban({ puedeEditar, trabajos, tareas, elementos, ocupacion, tecnicos,
           {columnas.map((nombreColumna) => {
             const clave = claveEstado(nombreColumna)
             const filas = tarjetasPorColumna.get(clave) || []
+            const color = colorPorClave.get(clave) || '#94a3b8'
             return (
               <div
                 key={clave}
@@ -193,9 +197,15 @@ function Kanban({ puedeEditar, trabajos, tareas, elementos, ocupacion, tecnicos,
                 }}
                 className="flex w-72 shrink-0 flex-col rounded-lg border border-slate-200 bg-slate-50"
               >
-                <div className="flex items-center justify-between rounded-t-lg border-b border-slate-200 bg-white px-3 py-2">
-                  <span className="text-sm font-semibold text-slate-800">{nombreColumna}</span>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{filas.length}</span>
+                <div
+                  className="flex items-center justify-between gap-2 rounded-t-lg border-b border-slate-200 bg-white px-3 py-2"
+                  style={{ borderTop: `3px solid ${color}` }}
+                >
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                    <span className="truncate text-sm font-semibold text-slate-800">{nombreColumna}</span>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{filas.length}</span>
                 </div>
                 <div className="flex-1 space-y-2 p-2">
                   {filas.map(({ ot }) => (
@@ -203,6 +213,7 @@ function Kanban({ puedeEditar, trabajos, tareas, elementos, ocupacion, tecnicos,
                       key={ot.id}
                       ot={ot}
                       estado={sobreEstadoOptimista[ot.id] || ot.clickup_estado_actual || ot.estado}
+                      color={color}
                       subtareas={tareasDe.get(ot.id) || []}
                       elemento={elementoPorId.get(elementoDe.get(ot.id)) || null}
                       nombreTecnico={nombreTecnico}
@@ -223,12 +234,14 @@ function Kanban({ puedeEditar, trabajos, tareas, elementos, ocupacion, tecnicos,
         <p className="mt-2 text-xs text-slate-400">Toca una tarjeta para ver su detalle, o arrástrala a otra columna para cambiar el estado en ClickUp.</p>
       )}
 
-      {detalleAbierto && <DetalleOt trabajoId={detalleAbierto} nombreTecnico={nombreTecnico} onCerrar={() => setDetalleAbierto(null)} />}
+      {detalleAbierto && (
+        <DetalleOt trabajoId={detalleAbierto} usuario={usuario} tecnicos={tecnicos} nombreTecnico={nombreTecnico} onCerrar={() => setDetalleAbierto(null)} />
+      )}
     </div>
   )
 }
 
-function TarjetaOt({ ot, estado, subtareas, elemento, nombreTecnico, arrastrable, onDragStart, onDragEnd, onAbrir }) {
+function TarjetaOt({ ot, estado, color, subtareas, elemento, nombreTecnico, arrastrable, onDragStart, onDragEnd, onAbrir }) {
   const vehiculo = uno(ot.vehiculos)
   const progreso = progresoSubtareas(subtareas)
   const regla = reglaDeUbicacion({ estado, subtareas })
@@ -254,6 +267,7 @@ function TarjetaOt({ ot, estado, subtareas, elemento, nombreTecnico, arrastrable
           onAbrir()
         }
       }}
+      style={{ borderLeftWidth: 4, borderLeftColor: color }}
       className={`cursor-pointer rounded-md border bg-white p-2 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-deep ${
         arrastrable ? 'active:cursor-grabbing' : ''
       } ${ubicacion === 'incorrecta' ? 'border-red-300' : ubicacion === 'sin_ubicar' ? 'border-amber-300' : 'border-slate-200'}`}

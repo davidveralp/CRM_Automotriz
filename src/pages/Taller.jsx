@@ -682,6 +682,7 @@ function Taller() {
       {vista === 'kanban' && !cargando && (
         <Kanban
           empresaId={usuario.empresa_id}
+          usuario={usuario}
           puedeEditar={puedeEditar}
           trabajos={trabajos}
           tareas={tareas}

@@ -15,6 +15,7 @@ const ETIQUETA_TIPO = {
   repuesto_pendiente_presupuesto: 'Repuesto sin presupuesto',
   descuento_pendiente: 'Descuento por autorizar',
   descuento_resuelto: 'Descuento',
+  tarea_asignada: 'Tarea asignada',
 }
 
 const COLOR_TIPO = {
@@ -28,6 +29,7 @@ const COLOR_TIPO = {
   repuesto_pendiente_presupuesto: 'border-l-amber-400',
   descuento_pendiente: 'border-l-amber-400',
   descuento_resuelto: 'border-l-emerald-500',
+  tarea_asignada: 'border-l-violet-400',
 }
 
 // Mismo grupo de acceso que /cuentas-por-cobrar (App.jsx): admin/socia ya

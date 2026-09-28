@@ -19,6 +19,7 @@ const ETIQUETA_AREA = {
 const PESTANAS_OT = ['mano_obra', 'repuestos', 'lubricantes_insumos', 'servicios_externos']
 
 const ROLES_CON_ACCESO_MONTOS = ['socia', 'admin', 'encargado_presupuestos', 'jefe_taller']
+const ROLES_QUE_ASIGNAN_TECNICO = ['admin', 'socia', 'jefe_taller']
 
 const ETIQUETA_DECISION = {
   pendiente: 'Pendiente',
@@ -104,6 +105,69 @@ function AvatarTecnico({ nombre }) {
     >
       {inicialesTecnico(nombre)}
     </span>
+  )
+}
+
+// "Marcar ejecutada" + observación editable de una tarea de mano de obra. Solo
+// se muestra a quien puede ejecutarla: el jefe de taller/admin/socia (cualquier
+// tarea) o el propio técnico asignado (solo la suya). Empuja el cambio a
+// ClickUp también -ver clickup-tarea-.
+function ControlTareaTecnico({ tarea, onCompletar, onGuardarObservacion }) {
+  const [editando, setEditando] = useState(false)
+  const [texto, setTexto] = useState(tarea.observaciones_tecnico || '')
+  const [guardando, setGuardando] = useState(false)
+
+  async function guardar(evento) {
+    evento.preventDefault()
+    setGuardando(true)
+    await onGuardarObservacion(texto.trim() || null)
+    setGuardando(false)
+    setEditando(false)
+  }
+
+  return (
+    <div className="mt-1">
+      {editando ? (
+        <form onSubmit={guardar} className="flex items-start gap-1.5">
+          <textarea
+            value={texto}
+            onChange={(evento) => setTexto(evento.target.value)}
+            rows={2}
+            autoFocus
+            className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+            placeholder="Observación de la tarea (ej. venta cruzada, hallazgo)"
+          />
+          <div className="flex shrink-0 flex-col gap-1">
+            <button type="submit" disabled={guardando} className="rounded bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50">
+              Guardar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTexto(tarea.observaciones_tecnico || '')
+                setEditando(false)
+              }}
+              className="text-xs text-slate-500 underline"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button type="button" onClick={() => setEditando(true)} className="block text-left text-xs text-slate-500 hover:text-slate-800">
+          {tarea.observaciones_tecnico ? (
+            <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">{tarea.observaciones_tecnico}</span>
+          ) : (
+            <span className="underline">Agregar observación</span>
+          )}
+        </button>
+      )}
+      {!tarea.completada && (
+        <button type="button" onClick={onCompletar} className="mt-1 rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700">
+          Marcar ejecutada
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -197,7 +261,7 @@ function TrabajoDetalle() {
           .maybeSingle(),
         supabase
           .from('tareas_taller')
-          .select('id, descripcion, estado, tecnico_id, clickup_asignado_nombre, observaciones_tecnico, usuarios(nombre_completo)')
+          .select('id, descripcion, estado, completada, tecnico_id, clickup_asignado_nombre, observaciones_tecnico, usuarios(nombre_completo)')
           .eq('trabajo_id', id)
           .order('orden'),
         // Siempre por la vista, nunca por la tabla: acá costo/precio salen en
@@ -420,6 +484,43 @@ function TrabajoDetalle() {
       // cambió (ej. el trigger).
     } catch {
       setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    }
+  }
+
+  // Asignar/completar/observación empujan el cambio a ClickUp también (ver
+  // clickup-tarea); acá solo se llama y se refleja el resultado en la tabla.
+  async function asignarTecnicoATarea(tareaId, tecnicoId) {
+    const anterior = tareas.find((t) => t.id === tareaId)
+    setTareas((actual) => actual.map((t) => (t.id === tareaId ? { ...t, tecnico_id: tecnicoId || null, clickup_asignado_nombre: null } : t)))
+    try {
+      await invocarFuncion('clickup-tarea', { body: { accion: 'asignar', tarea_taller_id: tareaId, tecnico_id: tecnicoId } })
+      await cargarTodo()
+    } catch (excepcion) {
+      setTareas((actual) => actual.map((t) => (t.id === tareaId ? anterior : t)))
+      setError(excepcion.message)
+    }
+  }
+
+  async function completarTareaTecnico(tareaId) {
+    const anterior = tareas.find((t) => t.id === tareaId)
+    setTareas((actual) => actual.map((t) => (t.id === tareaId ? { ...t, completada: true } : t)))
+    try {
+      await invocarFuncion('clickup-tarea', { body: { accion: 'completar', tarea_taller_id: tareaId } })
+      await cargarTodo()
+    } catch (excepcion) {
+      setTareas((actual) => actual.map((t) => (t.id === tareaId ? anterior : t)))
+      setError(excepcion.message)
+    }
+  }
+
+  async function guardarObservacionTecnico(tareaId, texto) {
+    const anterior = tareas.find((t) => t.id === tareaId)
+    setTareas((actual) => actual.map((t) => (t.id === tareaId ? { ...t, observaciones_tecnico: texto } : t)))
+    try {
+      await invocarFuncion('clickup-tarea', { body: { accion: 'observacion', tarea_taller_id: tareaId, observacion: texto } })
+    } catch (excepcion) {
+      setTareas((actual) => actual.map((t) => (t.id === tareaId ? anterior : t)))
+      setError(excepcion.message)
     }
   }
 
@@ -937,10 +1038,18 @@ function TrabajoDetalle() {
                             {nombreTecnico || 'Sin asignar'} · {tarea.estado}
                           </p>
                         )}
-                        {tarea?.observaciones_tecnico && (
-                          <p className="mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900" title="Escrita por el técnico en ClickUp: puede indicar una venta cruzada para ofrecer al cliente.">
-                            <span className="font-semibold">Observación del técnico:</span> {tarea.observaciones_tecnico}
-                          </p>
+                        {tarea && !bloqueada && (ROLES_QUE_ASIGNAN_TECNICO.includes(usuario?.rol) || tarea.tecnico_id === usuario?.id) ? (
+                          <ControlTareaTecnico
+                            tarea={tarea}
+                            onCompletar={() => completarTareaTecnico(tarea.id)}
+                            onGuardarObservacion={(texto) => guardarObservacionTecnico(tarea.id, texto)}
+                          />
+                        ) : (
+                          tarea?.observaciones_tecnico && (
+                            <p className="mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900" title="Escrita por el técnico -puede indicar una venta cruzada para ofrecer al cliente.">
+                              <span className="font-semibold">Observación del técnico:</span> {tarea.observaciones_tecnico}
+                            </p>
+                          )
                         )}
                         {item.producto_nombre && (
                           <p className="mt-0.5 text-xs text-slate-400">
@@ -1059,7 +1168,22 @@ function TrabajoDetalle() {
                       </td>
                       {esManoObra && (
                         <td className="px-3 py-2">
-                          <AvatarTecnico nombre={nombreTecnico} />
+                          {!bloqueada && ROLES_QUE_ASIGNAN_TECNICO.includes(usuario?.rol) ? (
+                            <select
+                              value={tarea?.tecnico_id || ''}
+                              onChange={(evento) => asignarTecnicoATarea(tarea.id, evento.target.value || null)}
+                              className="rounded border border-slate-300 px-2 py-1 text-xs"
+                            >
+                              <option value="">Sin asignar</option>
+                              {tecnicos.map((tecnico) => (
+                                <option key={tecnico.id} value={tecnico.id}>
+                                  {tecnico.nombre_completo}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <AvatarTecnico nombre={nombreTecnico} />
+                          )}
                         </td>
                       )}
                     </tr>

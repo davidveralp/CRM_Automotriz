@@ -9,6 +9,8 @@ function uno(valor) {
   return Array.isArray(valor) ? valor[0] : valor
 }
 
+const ROLES_QUE_ASIGNAN = ['admin', 'socia', 'jefe_taller']
+
 const ETIQUETA_TIPO_SERVICIO = {
   taller_mecanico: 'Mecánica',
   servicio_rapido: 'Servicio Rápido',
@@ -25,12 +27,14 @@ function fechaHora(iso) {
   )
 }
 
-// Detalle de una OT al abrir su tarjeta en el Kanban -parecido a como se ve
-// la tarjeta en ClickUp-. Casi todo sale de lo que ya está sincronizado en la
-// base (subtareas, checklists, campos); solo la descripción y la fecha de
-// inicio se traen en vivo de ClickUp al abrir (acción "detalle" de
-// clickup-kanban), porque nadie las copia a la base en ningún otro momento.
-function DetalleOt({ trabajoId, nombreTecnico, onCerrar }) {
+// Detalle de una OT en pantalla completa, al abrir su tarjeta en el Kanban
+// -parecido a como se ve la tarjeta en ClickUp-. Casi todo sale de lo que ya
+// está sincronizado en la base (subtareas, checklists, campos); solo la
+// descripción y la fecha de inicio se traen en vivo de ClickUp al abrir
+// (acción "detalle" de clickup-kanban), porque nadie las copia a la base en
+// ningún otro momento. Asignar técnico, marcar ejecutada y guardar la
+// observación empujan el cambio a ClickUp también (función clickup-tarea).
+function DetalleOt({ trabajoId, usuario, tecnicos, nombreTecnico, onCerrar }) {
   const [trabajo, setTrabajo] = useState(null)
   const [subtareas, setSubtareas] = useState([])
   const [items, setItems] = useState([])
@@ -92,47 +96,81 @@ function DetalleOt({ trabajoId, nombreTecnico, onCerrar }) {
     }
   }, [trabajoId])
 
+  function actualizarSubtarea(id, cambios) {
+    setSubtareas((actual) => actual.map((t) => (t.id === id ? { ...t, ...cambios } : t)))
+  }
+
+  async function asignarTecnico(tareaId, tecnicoId) {
+    const anterior = subtareas.find((t) => t.id === tareaId)
+    actualizarSubtarea(tareaId, { tecnico_id: tecnicoId || null, clickup_asignado_nombre: null })
+    try {
+      await invocarFuncion('clickup-tarea', { body: { accion: 'asignar', tarea_taller_id: tareaId, tecnico_id: tecnicoId } })
+    } catch (excepcion) {
+      actualizarSubtarea(tareaId, anterior)
+      setError(excepcion.message)
+    }
+  }
+
+  async function completarTarea(tareaId) {
+    const anterior = subtareas.find((t) => t.id === tareaId)
+    actualizarSubtarea(tareaId, { completada: true })
+    try {
+      const resultado = await invocarFuncion('clickup-tarea', { body: { accion: 'completar', tarea_taller_id: tareaId } })
+      if (resultado?.estado) actualizarSubtarea(tareaId, { estado: resultado.estado })
+    } catch (excepcion) {
+      actualizarSubtarea(tareaId, anterior)
+      setError(excepcion.message)
+    }
+  }
+
+  async function guardarObservacion(tareaId, texto) {
+    const anterior = subtareas.find((t) => t.id === tareaId)
+    actualizarSubtarea(tareaId, { observaciones_tecnico: texto })
+    try {
+      await invocarFuncion('clickup-tarea', { body: { accion: 'observacion', tarea_taller_id: tareaId, observacion: texto } })
+    } catch (excepcion) {
+      actualizarSubtarea(tareaId, anterior)
+      setError(excepcion.message)
+    }
+  }
+
   const vehiculo = trabajo ? uno(trabajo.vehiculos) : null
   const cliente = trabajo ? uno(trabajo.clientes) : null
   const asignados = [...new Set(subtareas.map((t) => (t.tecnico_id ? nombreTecnico(t.tecnico_id) : t.clickup_asignado_nombre)).filter(Boolean))]
   const total = subtareas.length
   const hechas = subtareas.filter((t) => t.completada).length
   const progreso = total === 0 ? 0 : Math.round((hechas / total) * 100)
+  const puedeAsignar = ROLES_QUE_ASIGNAN.includes(usuario?.rol)
+  const listaTecnicos = (tecnicos || []).filter((t) => t.rol === 'tecnico')
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={onCerrar}>
-      <div
-        className="my-8 w-full max-w-2xl rounded-lg bg-white shadow-xl"
-        onClick={(evento) => evento.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6">
+        <h1 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Detalle de la OT</h1>
+        <button type="button" onClick={onCerrar} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Cerrar">
+          ✕ <span className="ml-1 hidden text-sm sm:inline">Cerrar</span>
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
         {cargando ? (
           <p className="p-6 text-slate-500">Cargando…</p>
-        ) : error ? (
-          <div className="p-6">
-            <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-            <button type="button" onClick={onCerrar} className="btn-ghost mt-3">
-              Cerrar
-            </button>
-          </div>
+        ) : error && !trabajo ? (
+          <p className="m-6 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         ) : (
-          <>
-            <div className="flex items-start justify-between gap-2 border-b border-slate-200 p-4">
-              <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-slate-900">
-                  {formatearPatente(vehiculo?.patente)} {vehiculo ? `${vehiculo.marca} ${vehiculo.modelo}` : ''}
-                  {trabajo.kilometraje_ingreso ? ` · ${trabajo.kilometraje_ingreso.toLocaleString('es-CL')} km` : ''} · OT {trabajo.numero_ot}
-                </h2>
-                <p className="mt-0.5 text-sm text-slate-500">
-                  {nombreCliente(cliente)}
-                  {cliente?.telefono ? ` · ${cliente.telefono}` : ''}
-                </p>
-              </div>
-              <button type="button" onClick={onCerrar} className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Cerrar">
-                ✕
-              </button>
-            </div>
+          <div className="mx-auto max-w-4xl p-4 sm:p-6">
+            {error && <p className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-            <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+            <h2 className="text-xl font-semibold text-slate-900">
+              {formatearPatente(vehiculo?.patente)} {vehiculo ? `${vehiculo.marca} ${vehiculo.modelo}` : ''}
+              {trabajo.kilometraje_ingreso ? ` · ${trabajo.kilometraje_ingreso.toLocaleString('es-CL')} km` : ''} · OT {trabajo.numero_ot}
+            </h2>
+            <p className="mt-0.5 text-sm text-slate-500">
+              {nombreCliente(cliente)}
+              {cliente?.telefono ? ` · ${cliente.telefono}` : ''}
+            </p>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <p className="label">Estado</p>
                 <p className="text-sm font-medium text-slate-800">{trabajo.clickup_estado_actual || '—'}</p>
@@ -185,7 +223,7 @@ function DetalleOt({ trabajoId, nombreTecnico, onCerrar }) {
               </div>
             </div>
 
-            <div className="border-t border-slate-200 p-4">
+            <div className="mt-4 rounded-lg border border-slate-200 p-4">
               <p className="label mb-1">Descripción</p>
               {clickup?.error ? (
                 <p className="text-sm text-amber-700">No se pudo traer la descripción de ClickUp: {clickup.error}</p>
@@ -197,33 +235,24 @@ function DetalleOt({ trabajoId, nombreTecnico, onCerrar }) {
             </div>
 
             {subtareas.length > 0 && (
-              <div className="border-t border-slate-200 p-4">
-                <p className="label mb-2">Subtareas ({hechas}/{total} cerradas)</p>
-                <div className="overflow-x-auto rounded border border-slate-200">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 text-slate-500">
-                      <tr>
-                        <th className="px-2 py-1.5"></th>
-                        <th className="px-2 py-1.5">Nombre</th>
-                        <th className="px-2 py-1.5">Observaciones</th>
-                        <th className="px-2 py-1.5">Persona asignada</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {subtareas.map((t) => (
-                        <tr key={t.id} className="border-t border-slate-100">
-                          <td className="px-2 py-1.5">
-                            <span className={t.completada ? 'text-emerald-600' : 'text-slate-300'}>{t.completada ? '✓' : '○'}</span>
-                          </td>
-                          <td className={`px-2 py-1.5 ${t.completada ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{t.descripcion}</td>
-                          <td className="px-2 py-1.5 text-slate-500">{t.observaciones_tecnico || '—'}</td>
-                          <td className="px-2 py-1.5 text-slate-500">
-                            {(t.tecnico_id ? nombreTecnico(t.tecnico_id) : t.clickup_asignado_nombre) || '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <div className="mt-4 rounded-lg border border-slate-200 p-4">
+                <p className="label mb-2">
+                  Subtareas ({hechas}/{total} cerradas)
+                </p>
+                <div className="space-y-2">
+                  {subtareas.map((subtarea) => {
+                    const propsFila = {
+                      tarea: subtarea,
+                      puedeAsignar,
+                      puedeEjecutar: puedeAsignar || subtarea.tecnico_id === usuario?.id,
+                      listaTecnicos,
+                      nombreTecnico,
+                      onAsignar: (tecnicoId) => asignarTecnico(subtarea.id, tecnicoId),
+                      onCompletar: () => completarTarea(subtarea.id),
+                      onGuardarObservacion: (texto) => guardarObservacion(subtarea.id, texto),
+                    }
+                    return <FilaSubtarea key={subtarea.id} {...propsFila} />
+                  })}
                 </div>
               </div>
             )}
@@ -232,7 +261,7 @@ function DetalleOt({ trabajoId, nombreTecnico, onCerrar }) {
               const filas = items.filter((i) => i.area === area)
               if (filas.length === 0) return null
               return (
-                <div key={area} className="border-t border-slate-200 p-4">
+                <div key={area} className="mt-4 rounded-lg border border-slate-200 p-4">
                   <p className="label mb-2">
                     {NOMBRE_CHECKLIST_POR_AREA[area]} ({filas.filter((i) => i.verificado).length}/{filas.length})
                   </p>
@@ -250,9 +279,103 @@ function DetalleOt({ trabajoId, nombreTecnico, onCerrar }) {
                 </div>
               )
             })}
-          </>
+          </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// Una subtarea: asignar técnico (jefe de taller/admin/socia), marcar
+// ejecutada y escribir observación (quien puede ejecutarla: lo mismo, o el
+// propio técnico asignado). Todo empuja a ClickUp por su cuenta -ver
+// clickup-tarea-, así que acá solo se llama y se refleja el resultado.
+function FilaSubtarea({ tarea, puedeAsignar, puedeEjecutar, listaTecnicos, nombreTecnico, onAsignar, onCompletar, onGuardarObservacion }) {
+  const [editandoObs, setEditandoObs] = useState(false)
+  const [textoObs, setTextoObs] = useState(tarea.observaciones_tecnico || '')
+  const [guardando, setGuardando] = useState(false)
+
+  async function guardar(evento) {
+    evento.preventDefault()
+    setGuardando(true)
+    await onGuardarObservacion(textoObs.trim() || null)
+    setGuardando(false)
+    setEditandoObs(false)
+  }
+
+  return (
+    <div className={`rounded border p-2 ${tarea.completada ? 'border-slate-200 bg-slate-50' : 'border-slate-200'}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={tarea.completada ? 'text-emerald-600' : 'text-slate-300'}>{tarea.completada ? '✓' : '○'}</span>
+        <span className={`text-sm ${tarea.completada ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{tarea.descripcion}</span>
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {puedeAsignar ? (
+            <select
+              value={tarea.tecnico_id || ''}
+              onChange={(evento) => onAsignar(evento.target.value || null)}
+              className="rounded border border-slate-300 px-2 py-1 text-xs"
+            >
+              <option value="">Sin asignar</option>
+              {listaTecnicos.map((tecnico) => (
+                <option key={tecnico.id} value={tecnico.id}>
+                  {tecnico.nombre_completo}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-xs text-slate-500">{(tarea.tecnico_id ? nombreTecnico(tarea.tecnico_id) : tarea.clickup_asignado_nombre) || 'Sin asignar'}</span>
+          )}
+
+          {puedeEjecutar && !tarea.completada && (
+            <button type="button" onClick={onCompletar} className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700">
+              Marcar ejecutada
+            </button>
+          )}
+        </div>
+      </div>
+
+      {puedeEjecutar ? (
+        editandoObs ? (
+          <form onSubmit={guardar} className="mt-1.5 flex items-start gap-1.5">
+            <textarea
+              value={textoObs}
+              onChange={(evento) => setTextoObs(evento.target.value)}
+              rows={2}
+              autoFocus
+              className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+              placeholder="Observación de la tarea (ej. venta cruzada, hallazgo)"
+            />
+            <div className="flex shrink-0 flex-col gap-1">
+              <button type="submit" disabled={guardando} className="rounded bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50">
+                Guardar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTextoObs(tarea.observaciones_tecnico || '')
+                  setEditandoObs(false)
+                }}
+                className="text-xs text-slate-500 underline"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button type="button" onClick={() => setEditandoObs(true)} className="mt-1 block text-left text-xs text-slate-500 hover:text-slate-800">
+            {tarea.observaciones_tecnico ? (
+              <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">{tarea.observaciones_tecnico}</span>
+            ) : (
+              <span className="underline">Agregar observación</span>
+            )}
+          </button>
+        )
+      ) : (
+        tarea.observaciones_tecnico && (
+          <p className="mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">{tarea.observaciones_tecnico}</p>
+        )
+      )}
     </div>
   )
 }
