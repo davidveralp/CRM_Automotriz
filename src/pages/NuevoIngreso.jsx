@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
+import { invocarFuncion } from '../lib/invocarFuncion'
 import FirmaCanvas from '../components/FirmaCanvas'
 import DiagramaVehiculo from '../components/DiagramaVehiculo'
 import EncabezadoDocumento from '../components/EncabezadoDocumento'
@@ -410,6 +411,14 @@ function NuevoIngreso() {
           )
         }
         await supabase.from('vehiculos').update({ kilometraje: kilometrajeNumero }).eq('id', vehiculoId)
+      }
+
+      try {
+        await invocarFuncion('clickup-sincronizar', { body: { trabajo_id: trabajo.id } })
+      } catch {
+        // No crítico para el ingreso: si ClickUp no responde o la empresa
+        // no tiene lista configurada, la tarjeta queda pendiente y se puede
+        // crear después (el asesor no debe quedar bloqueado por esto).
       }
 
       setOtCreada(trabajo)
