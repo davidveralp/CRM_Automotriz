@@ -1,5 +1,12 @@
 # Registro de cambios
 
+## 2026-09-28 — Exige valorizar la mano de obra antes de cerrar la OT
+
+- Una tarea de mano de obra creada directo en ClickUp o el Kanban (o agregada "a mano" sin el catálogo de servicios) no traía precio solo: quedaba fuera de la Orden de Egreso en silencio, porque esa pantalla solo muestra ítems con decisión "Aceptado", y una tarea sin su línea de `ot_detalle` nunca llega a tener una decisión.
+- Ahora, al ir a cerrar la OT (Trabajos → Cierre), si hay tareas de mano de obra sin precio se bloquea "Marcar como entregado" y aparece la lista de qué falta valorizar, con un campo para ponerle precio ahí mismo -crea la línea de `ot_detalle` si no existía, o solo le completa el precio si ya existía sin él-.
+- Quien no tiene acceso a montos (`ot_detalle_con_permiso` le oculta el precio real) igual ve la lista de tareas pendientes, pero sin poder resolverla: se le pide que llame a alguien con acceso.
+- **Verificado de punta a punta contra la demo real:** el aviso bloqueó el cierre, el precio se guardó y el aviso se resolvió solo. De paso confirmó un comportamiento ya existente (no introducido acá): "Eliminar" en Mano de obra borra la línea de precio, no la tarea -si se repite, el aviso vuelve a aparecer, correctamente-.
+
 ## 2026-09-28 — Notificación al coordinador de repuestos (`0064_notificacion_repuesto_asignado.sql`)
 
 - Al coordinador de repuestos (hoy Víctor Tello) le llega un aviso cuando le asignan un ítem nuevo de Repuestos o Lubricantes e insumos, sin importar por dónde haya entrado: agregado desde el detalle del Kanban (`clickup-item`), o agregado directo en ClickUp -el webhook ahora también asigna el ítem al coordinador cuando lo detecta como nuevo, con el mismo criterio de la asignación automática (0062)-.

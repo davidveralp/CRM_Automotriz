@@ -115,6 +115,41 @@ function AvatarTecnico({ nombre }) {
 // El check de la izquierda ES el control para terminar la tarea -no un botón
 // aparte-. Al tocarlo se pide la observación (obligatoria: sin observación no
 // se puede terminar) y recién ahí se guarda y se completa en un solo paso.
+// Una tarea sin precio en el aviso de "Cierre": si quien mira tiene acceso a
+// montos, puede ponerle precio ahí mismo; si no, solo ve el nombre.
+function FilaValorizarPendiente({ tarea, puedeValorizar, onGuardar }) {
+  const [precio, setPrecio] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  async function guardar(evento) {
+    evento.preventDefault()
+    setGuardando(true)
+    await onGuardar(tarea, precio)
+    setGuardando(false)
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-2">
+      <span>{tarea.descripcion}</span>
+      {puedeValorizar && (
+        <form onSubmit={guardar} className="flex items-center gap-1">
+          <input
+            type="number"
+            min="0"
+            value={precio}
+            onChange={(evento) => setPrecio(evento.target.value)}
+            placeholder="Precio"
+            className="w-24 rounded border border-amber-300 px-2 py-0.5 text-xs"
+          />
+          <button type="submit" disabled={guardando || !precio} className="rounded bg-slate-900 px-2 py-0.5 text-xs text-white disabled:opacity-50">
+            Guardar
+          </button>
+        </form>
+      )}
+    </li>
+  )
+}
+
 function ControlTareaTecnico({ tarea, nombreTecnico, onCompletar, onGuardarObservacion }) {
   const [editando, setEditando] = useState(false)
   const [texto, setTexto] = useState(tarea.observaciones_tecnico || '')
@@ -503,6 +538,36 @@ function TrabajoDetalle() {
     }
   }
 
+  // Le pone precio a una tarea que llegó sin valorizar (directo de ClickUp/
+  // Kanban, o agregada "a mano" sin el catálogo): crea la línea de
+  // ot_detalle si todavía no existe, o solo le completa el precio si ya
+  // existía sin él. Sin esto, quedaría fuera de la Orden de Egreso.
+  async function valorizarTareaPendiente(tarea, precioTexto) {
+    const precio = Number(precioTexto)
+    if (!precioTexto || Number.isNaN(precio) || precio < 0) return
+    setError(null)
+    try {
+      const itemExistente = detalle.find((d) => d.tarea_taller_id === tarea.id)
+      const { error: errorGuardar } = itemExistente
+        ? await supabase.from('ot_detalle').update({ precio_unitario: precio }).eq('id', itemExistente.id)
+        : await supabase.from('ot_detalle').insert({
+            trabajo_id: id,
+            area: 'mano_obra',
+            tarea_taller_id: tarea.id,
+            detalle: tarea.descripcion,
+            cantidad: 1,
+            precio_unitario: precio,
+          })
+      if (errorGuardar) {
+        setError(errorGuardar.message)
+        return
+      }
+      await cargarTodo()
+    } catch {
+      setError('No se pudo conectar con el servidor. Revisa la conexión e intenta de nuevo.')
+    }
+  }
+
   async function alternarVerificado(item) {
     try {
       const { error: errorActualizar } = await supabase
@@ -609,8 +674,25 @@ function TrabajoDetalle() {
     }
   }
 
+  // Una tarea de mano de obra creada directo en ClickUp/Kanban (o "a mano" sin
+  // el catálogo) no trae precio solo -ver ot_detalle.tarea_taller_id-. Sin
+  // esto, quedaría fuera de la Orden de Egreso en silencio: se exige
+  // valorizarla antes de poder cerrar la OT. Quien no tiene acceso a montos
+  // ve precio_unitario en NULL siempre (ot_detalle_con_permiso lo oculta), así
+  // que para esa persona solo se puede exigir que la línea EXISTA, no que
+  // tenga precio -el valor real se lo confirma alguien con acceso.
+  const tareasSinValorizar = tareas.filter((tarea) => {
+    const item = detalle.find((d) => d.tarea_taller_id === tarea.id)
+    if (!item) return true
+    return tieneAccesoMontos && item.precio_unitario == null
+  })
+
   async function cerrarTrabajo(evento) {
     evento.preventDefault()
+    if (tareasSinValorizar.length > 0) {
+      setError('Hay tareas de mano de obra sin precio: valorízalas antes de marcar como entregado (ver "Cierre" más abajo).')
+      return
+    }
     setCerrando(true)
     setError(null)
     try {
@@ -1396,7 +1478,25 @@ function TrabajoDetalle() {
             </Link>
           </div>
         ) : (
-          <form onSubmit={cerrarTrabajo} className="rounded border border-slate-200 bg-white p-3">
+          <>
+            {tareasSinValorizar.length > 0 && (
+              <div className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-medium">
+                  {tareasSinValorizar.length} tarea{tareasSinValorizar.length === 1 ? '' : 's'} de mano de obra sin precio -hay que
+                  valorizarla{tareasSinValorizar.length === 1 ? '' : 's'} antes de poder marcar como entregado.
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                  {tareasSinValorizar.map((tareaPendiente) => {
+                    const propsFila = { tarea: tareaPendiente, puedeValorizar: tieneAccesoMontos, onGuardar: valorizarTareaPendiente }
+                    return <FilaValorizarPendiente key={tareaPendiente.id} {...propsFila} />
+                  })}
+                </ul>
+                {!tieneAccesoMontos && (
+                  <p className="mt-2 text-xs">No tienes acceso para poner precios: pide a admin, socia, jefe de taller o encargado de presupuestos que las complete.</p>
+                )}
+              </div>
+            )}
+            <form onSubmit={cerrarTrabajo} className="rounded border border-slate-200 bg-white p-3">
             <label className="mb-1 block text-sm font-medium text-slate-700">N° de documento (Dimasoft)</label>
             <input
               value={numeroDocumento}
@@ -1510,12 +1610,14 @@ function TrabajoDetalle() {
 
             <button
               type="submit"
-              disabled={cerrando}
+              disabled={cerrando || tareasSinValorizar.length > 0}
+              title={tareasSinValorizar.length > 0 ? 'Hay tareas de mano de obra sin precio' : undefined}
               className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
             >
               {cerrando ? 'Cerrando…' : 'Marcar como entregado'}
             </button>
-          </form>
+            </form>
+          </>
         )}
       </section>
 
