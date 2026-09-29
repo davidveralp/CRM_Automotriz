@@ -1,5 +1,12 @@
 # Registro de cambios
 
+## 2026-09-28 — Notificación al coordinador de repuestos (`0064_notificacion_repuesto_asignado.sql`)
+
+- Al coordinador de repuestos (hoy Víctor Tello) le llega un aviso cuando le asignan un ítem nuevo de Repuestos o Lubricantes e insumos, sin importar por dónde haya entrado: agregado desde el detalle del Kanban (`clickup-item`), o agregado directo en ClickUp -el webhook ahora también asigna el ítem al coordinador cuando lo detecta como nuevo, con el mismo criterio de la asignación automática (0062)-.
+- **Mismo patrón que `repuesto_pendiente_presupuesto` (0033):** un solo trigger en `ot_detalle` (no en cada función), así nunca puede faltar la notificación por un origen que se le escapó al código. Reutiliza columnas que ya existían (`usuario_destino_id`, `ot_detalle_id`): no hizo falta ninguna columna nueva, solo el tipo `repuesto_asignado` y los triggers.
+- Se resuelve sola cuando el ítem queda verificado (ya se preparó/compró) o cuando la OT se entrega. De paso, la entrega de la OT también limpia `tarea_asignada` -mismo hueco real que tenía esa notificación, sin relación directa con lo pedido pero del mismo tipo de bug, se corrigió de una vez-.
+- **Verificado:** `npm run verificar`, `vite build`, `deno check`. **No verificado contra la base real**: falta correr `0064` y volver a desplegar `clickup-webhook` (se le agregó la asignación automática en `reconciliarChecklists`).
+
 ## 2026-09-28 — Campos personalizados que faltaban en el detalle del Kanban
 
 - Se agregan al detalle de la tarjeta los tres campos personalizados de ClickUp que faltaban por traer: **Observaciones** (el campo, no la descripción nativa de la tarjeta -esa ya se mostraba y ya se podía editar-), **Segmento** y **Sugerencias**. Se habían dejado afuera antes porque en el ejemplo que compartió el cliente estaban vacíos.

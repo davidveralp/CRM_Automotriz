@@ -214,7 +214,7 @@ Deno.serve(async (req) => {
       .maybeSingle()
 
     if (trabajo) {
-      await reconciliarChecklists(supabase, trabajo.id, tareaRemota.checklists ?? [])
+      await reconciliarChecklists(supabase, trabajo.id, trabajo.empresa_id, tareaRemota.checklists ?? [])
 
       const estadoClickUp = (tareaRemota.status?.status ?? '').toLowerCase()
 
@@ -497,6 +497,7 @@ async function reconciliarChecklists(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   trabajoId: string,
+  empresaId: string,
   checklists: { id: string; name: string; items: { id: string; name: string; resolved: boolean }[] }[]
 ) {
   // Antes tenía su propio mapeo hardcodeado con los nombres viejos
@@ -508,6 +509,14 @@ async function reconciliarChecklists(
   const NOMBRE_A_AREA: Record<string, string> = Object.fromEntries(
     Object.entries(NOMBRE_CHECKLIST_POR_AREA).map(([area, nombre]) => [nombre, area])
   )
+
+  // Repuestos y Lubricantes e insumos agregados directo en ClickUp también
+  // quedan asignados al coordinador de repuestos (0062/0064): un ítem nuevo
+  // de esas áreas dispara la notificación por el trigger de ot_detalle sin
+  // importar por dónde entró (CRM o ClickUp), igual que ya hace
+  // repuesto_pendiente_presupuesto (0033) para la notificación al
+  // encargado de presupuestos.
+  let coordinadorRepuestosId: string | null = null
 
   for (const checklist of checklists) {
     const area = NOMBRE_A_AREA[checklist.name]
@@ -526,12 +535,26 @@ async function reconciliarChecklists(
           .update({ detalle: item.name, verificado: item.resolved })
           .eq('id', itemExistente.id)
       } else {
+        let responsableId: string | null = null
+        if (area === 'repuestos' || area === 'lubricantes_insumos') {
+          if (coordinadorRepuestosId === null) {
+            const { data: config } = await supabase
+              .from('clickup_config')
+              .select('responsable_repuestos_id')
+              .eq('empresa_id', empresaId)
+              .maybeSingle()
+            coordinadorRepuestosId = config?.responsable_repuestos_id ?? null
+          }
+          responsableId = coordinadorRepuestosId
+        }
+
         await supabase.from('ot_detalle').insert({
           trabajo_id: trabajoId,
           area,
           detalle: item.name,
           verificado: item.resolved,
           clickup_checklist_item_id: item.id,
+          responsable_id: responsableId,
         })
       }
     }
