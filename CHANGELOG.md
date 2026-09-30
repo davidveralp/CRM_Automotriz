@@ -1,5 +1,12 @@
 # Registro de cambios
 
+## 2026-09-29 — Sincronización automática con ClickUp al registrar un ingreso
+
+- Cada OT nueva (Nuevo ingreso) ahora empuja su tarjeta a ClickUp sola al registrarse -crea la tarjeta, sus campos personalizados y adopta la de la cita si venía de una agendada-, reutilizando la misma Edge Function `clickup-sincronizar` que ya hacía esto a mano. Ya no hace falta acordarse de sincronizar después.
+- La llamada es best-effort: si ClickUp no responde o la empresa no tiene lista configurada, el ingreso se guarda igual y la tarjeta queda pendiente -el asesor no debe quedar bloqueado por una falla de la integración-.
+- Se retira el botón manual "Sincronizar la demo con ClickUp" (`SincronizarDemoClickUp.jsx`, en Trabajos) y el componente se elimina: cubría el mismo caso (OT existentes sin tarjeta) que ahora se resuelve solo desde el ingreso; ya no queda ningún flujo que lo necesite.
+- **Verificado de punta a punta contra la demo real:** ingreso completo (vehículo y cliente nuevos) con sesión de un asesor real -la OT quedó creada y su detalle mostró "Tarjeta ya creada en ClickUp" sin ninguna acción manual.
+
 ## 2026-09-28 — Exige valorizar la mano de obra antes de cerrar la OT
 
 - Una tarea de mano de obra creada directo en ClickUp o el Kanban (o agregada "a mano" sin el catálogo de servicios) no traía precio solo: quedaba fuera de la Orden de Egreso en silencio, porque esa pantalla solo muestra ítems con decisión "Aceptado", y una tarea sin su línea de `ot_detalle` nunca llega a tener una decisión.
