@@ -210,11 +210,14 @@ function Menu() {
         {/* El logo del panel es SIEMPRE el mismo archivo del favicon (index.html),
             no empresas.logo_url: ese campo puede traer otro diseño (por ejemplo el
             logo con el nombre) y el panel debe mostrar el ícono de la marca.
-            En la demo (es_demo) se muestra el ícono de VPAI en vez del de Didial. */}
+            En la demo (es_demo) se muestra el ícono de VPAI en vez del de Didial.
+            Gira 90° al contraer el menú (dextrogiro) y vuelve girando al revés
+            (levogiro) al expandirlo: es la misma transición CSS interpolando el
+            ángulo entre 0 y 90, solo cambia el sentido según hacia dónde va. */}
         <img
           src={usuario?.empresas?.es_demo ? '/logo-vpai-icono.png' : '/logo-didial.png'}
           alt={usuario?.empresas?.nombre || 'Didial'}
-          className="h-11 w-11 shrink-0 object-contain"
+          className={`h-11 w-11 shrink-0 object-contain transition-transform duration-500 ease-in-out ${contraido ? 'rotate-90' : 'rotate-0'}`}
         />
 
         {!contraido && (
