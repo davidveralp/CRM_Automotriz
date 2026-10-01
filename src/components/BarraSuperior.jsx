@@ -5,8 +5,12 @@ import { ETIQUETAS_ROL } from '../lib/navegacion'
 import { pedirCorreosDemo } from '../lib/correosDemo'
 import { useNoLeidas } from '../lib/useNoLeidas'
 import { useTema } from '../lib/tema'
+import { supabase } from '../supabaseClient'
+import { CORREO_DEMO_POR_ROL, cambiarRolDemo } from '../lib/demo'
 import BuscadorGlobal from './BuscadorGlobal'
 import Icono from './Icono'
+
+const ROLES_DEMO = Object.keys(CORREO_DEMO_POR_ROL)
 
 const BOTON_ICONO =
   'relative grid h-9 w-9 place-items-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-deep'
@@ -15,7 +19,24 @@ const BOTON_ICONO =
 function MenuCuenta() {
   const { usuario, cerrarSesion } = useAuth()
   const [abierto, setAbierto] = useState(false)
+  const [cambiandoRol, setCambiandoRol] = useState(false)
+  const [errorRol, setErrorRol] = useState(null)
   const contenedor = useRef(null)
+
+  async function manejarCambioRol(evento) {
+    const nuevoRol = evento.target.value
+    if (nuevoRol === usuario.rol) return
+    setCambiandoRol(true)
+    setErrorRol(null)
+    try {
+      await cambiarRolDemo(supabase, nuevoRol)
+      // Éxito: el cambio de sesión hace que AuthContext recargue el usuario
+      // y este menú se vuelva a montar con el rol nuevo.
+    } catch {
+      setCambiandoRol(false)
+      setErrorRol('No se pudo cambiar de rol. Intenta de nuevo.')
+    }
+  }
 
   useEffect(() => {
     if (!abierto) return undefined
@@ -90,6 +111,31 @@ function MenuCuenta() {
                 <Icono nombre="correo" />
                 Correos de prueba
               </button>
+            )}
+            {usuario.empresas?.es_demo && (
+              <div className="px-3 py-2">
+                <label className="label" htmlFor="cambiar-rol-demo">
+                  Cambiar de rol
+                </label>
+                <select
+                  id="cambiar-rol-demo"
+                  className="input"
+                  value={usuario.rol}
+                  disabled={cambiandoRol}
+                  onChange={manejarCambioRol}
+                >
+                  {!ROLES_DEMO.includes(usuario.rol) && (
+                    <option value={usuario.rol}>{ETIQUETAS_ROL[usuario.rol] ?? usuario.rol}</option>
+                  )}
+                  {ROLES_DEMO.map((r) => (
+                    <option key={r} value={r}>
+                      {ETIQUETAS_ROL[r]}
+                    </option>
+                  ))}
+                </select>
+                {cambiandoRol && <p className="mt-1 text-xs text-slate-400">Cambiando de rol…</p>}
+                {errorRol && <p className="mt-1 text-xs text-red-600">{errorRol}</p>}
+              </div>
             )}
             <button
               type="button"

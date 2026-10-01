@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import { registrarAccesoFallido, registrarLogin } from '../lib/uso'
@@ -158,6 +158,12 @@ function Login() {
           </form>
 
           <p className="mt-10 text-center text-xs text-slate-400">Servicio Automotriz Didial · La Serena</p>
+          <p className="mt-2 text-center text-xs text-slate-400">
+            ¿Quieres probar la demo?{' '}
+            <Link to="/demo" className="underline hover:text-slate-600">
+              Entra aquí
+            </Link>
+          </p>
         </div>
       </div>
     </div>

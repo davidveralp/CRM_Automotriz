@@ -1,5 +1,23 @@
 # Registro de cambios
 
+## 2026-10-01 — Quita de la demo los datos reales de Didial que quedaban (`0066_demo_quitar_datos_didial.sql`)
+
+- El rebranding anterior (`0065`, logos/usuarios) dejó dos cosas sin tocar que el cliente pidió sacar: **`0047_demo_documentos_como_didial.sql`** (2026-09) había copiado nombre, dirección, teléfono, correo y logo de la empresa REAL a la demo "para que los documentos se vieran igual" -y de paso sus políticas de presupuesto quedaron con los **datos bancarios reales** de Didial (cuenta corriente, RUT, teléfono de coordinación)-; y `0057` había copiado el catálogo real tal cual, incluida la frase "(cuando no es en Didial)" en 8 notas de `catalogo_servicio_precios`.
+- `0066` revierte todo eso, solo en la empresa demo: nombre/dirección/teléfono/correo/logo pasan a datos ficticios de marca VPAI (`logo_url = '/logo-vpai-completo.png'`, el archivo estático del propio frontend, no hace falta subirlo a Storage); las 3 políticas de presupuesto vuelven a ser genéricas (mismo texto base que ya existía en `0046` antes de que `0047` las pisara, con datos de transferencia ficticios); y las 8 notas con "Didial" se reemplazan por un texto neutral.
+- Revisado el resto de las ~20 migraciones que mencionan "Didial": todas las demás son comentarios de código o filtran `WHERE nombre = 'Servicio Automotriz Didial Ltda.'` para operar solo sobre el tenant real -no afectan a la demo-.
+- **Pendiente de correr** contra la base, igual que `0065`.
+
+## 2026-10-01 — Rebranding de la demo a "VPAI" (`0065_demo_rebrand_vpai.sql`)
+
+**Qué se entrega:** la demo deja de verse como Didial y pasa a tener marca propia, "VPAI" (azul marino oscuro + negro, acentos plateado/azul claro), sin tocar en nada el branding ni los datos del tenant real.
+
+- **Login nuevo y separado para la demo** (`/demo`, `LoginDemo.jsx`): sin correo ni contraseña, se elige un rol de una lista y se entra directo con la cuenta demo de ese rol -mismo logo/paleta/ondas animadas que el login real (`src/lib/ondas.js`, reutilizado tal cual: solo son geometría, se le agregan 2 curvas nuevas coloreadas en plateado y azul claro en vez de amarillo/rojo)-. `Login.jsx` (el real, Didial) gana un enlace a `/demo` y viceversa.
+- **Cambiar de rol sin salir de la demo**: nuevo selector "Cambiar de rol" en "Mi cuenta" (`BarraSuperior.jsx`), visible solo si `empresas.es_demo`. Por debajo hace `signOut` + `signInWithPassword` con la cuenta del rol elegido (`src/lib/demo.js`, nuevo) -cada rol de la demo ya era una cuenta separada de Supabase Auth-; `AuthContext` ya recargaba el usuario solo cuando cambia el `user.id`, así que no hizo falta tocarlo.
+- **El rol "socia" no se puede quitar del sistema** (RLS y el tenant real de Didial dependen de él): en la demo se fusiona con "admin" -la cuenta `demo-socia@example.com` se reasigna a `rol='admin'` y se desactiva, y el rol ya no aparece como opción en `/demo` ni en "Cambiar de rol"-, quedando 7 roles visibles en vez de 8.
+- **`0065`:** renombra los 12 usuarios de la demo con nombres ficticios (ya no los nombres reales del equipo de Didial que puso `0063`) y aplica la fusión de "socia" con "admin". Acotado por `empresa_id` a la empresa demo en todo momento.
+- Paleta nueva en `tailwind.config.js`/`src/index.css` (namespace `vpai.*`, paralelo a `didial.*`, sin tocarlo) y logo nuevo (`public/logo-vpai-completo.png`, `public/logo-vpai-icono.png`); el ícono del sidebar (`Menu.jsx`) ya era un archivo estático hardcodeado (no venía de `empresas.logo_url`), así que se hizo condicional a `es_demo`.
+- **Verificado de punta a punta contra la demo real:** entrar a `/demo` eligiendo "Asesor" (sin "Socia" en la lista), y desde "Mi cuenta" → "Cambiar de rol" pasar a "Jefe de taller" sin pasar por `/login` -la sesión y el contenido cambiaron solos-. Confirmado que `/login` (Didial) sigue igual, con el enlace nuevo a la demo. **Falta correr `0065`** contra la base para que los nombres ficticios y la fusión de "socia" tomen efecto (hoy entrar a la demo sigue mostrando los nombres reales de Didial puestos por `0063`).
+
 ## 2026-09-29 — Sincronización automática con ClickUp al registrar un ingreso
 
 - Cada OT nueva (Nuevo ingreso) ahora empuja su tarjeta a ClickUp sola al registrarse -crea la tarjeta, sus campos personalizados y adopta la de la cita si venía de una agendada-, reutilizando la misma Edge Function `clickup-sincronizar` que ya hacía esto a mano. Ya no hace falta acordarse de sincronizar después.

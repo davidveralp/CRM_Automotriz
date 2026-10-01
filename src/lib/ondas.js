@@ -18,6 +18,21 @@ export const CURVA_ROJA = [
   [880, 100],
 ]
 
+// Mismo criterio, para el login de demo VPAI (coloreadas en plateado/azul
+// claro en vez de amarillo/rojo, ver LoginDemo.jsx).
+export const CURVA_PLATEADA = [
+  [-50, 230],
+  [260, 110],
+  [540, 80],
+  [870, 40],
+]
+export const CURVA_AZUL = [
+  [-50, 260],
+  [270, 180],
+  [550, 140],
+  [890, 90],
+]
+
 const PUNTOS = 48
 const FOTOGRAMAS = 8
 

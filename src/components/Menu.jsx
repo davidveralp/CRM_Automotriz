@@ -209,8 +209,13 @@ function Menu() {
       <div className={`flex items-center border-b border-white/10 py-5 ${contraido ? 'justify-center px-2' : 'gap-3 px-5'}`}>
         {/* El logo del panel es SIEMPRE el mismo archivo del favicon (index.html),
             no empresas.logo_url: ese campo puede traer otro diseño (por ejemplo el
-            logo con el nombre) y el panel debe mostrar el ícono de la marca. */}
-        <img src="/logo-didial.png" alt={usuario?.empresas?.nombre || 'Didial'} className="h-11 w-11 shrink-0 object-contain" />
+            logo con el nombre) y el panel debe mostrar el ícono de la marca.
+            En la demo (es_demo) se muestra el ícono de VPAI en vez del de Didial. */}
+        <img
+          src={usuario?.empresas?.es_demo ? '/logo-vpai-icono.png' : '/logo-didial.png'}
+          alt={usuario?.empresas?.nombre || 'Didial'}
+          className="h-11 w-11 shrink-0 object-contain"
+        />
 
         {!contraido && (
           <div className="min-w-0">

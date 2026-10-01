@@ -9,6 +9,7 @@ import BarraSuperior from './components/BarraSuperior'
 import ModalCorreosDemo from './components/ModalCorreosDemo'
 import RutaProtegida from './components/RutaProtegida'
 import Login from './pages/Login'
+import LoginDemo from './pages/LoginDemo'
 import CambiarClave from './pages/CambiarClave'
 import Inicio from './pages/Inicio'
 import Clientes from './pages/Clientes'
@@ -80,6 +81,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/demo" element={<LoginDemo />} />
           <Route path="/encuesta/:token" element={<EncuestaPublica />} />
           <Route path="/cambiar-clave" element={paginaProtegida(<CambiarClave />)} />
           <Route path="/" element={paginaProtegida(<Inicio />)} />
